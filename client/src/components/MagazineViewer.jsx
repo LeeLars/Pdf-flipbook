@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Settings } from 'lucide-react';
-import FlipbookViewer from './FlipbookViewer';
+import PageFlipBook from './PageFlipBook';
 import MagazineGallery from './MagazineGallery';
 import AdminPanel from './AdminPanel';
 import LoginModal from './LoginModal';
@@ -124,7 +124,7 @@ export default function MagazineViewer({ clientSlug }) {
               </p>
             </div>
             
-            <FlipbookViewer 
+            <PageFlipBook 
               pdfUrl={latestMagazine.pdf_url} 
               title={latestMagazine.title}
             />
