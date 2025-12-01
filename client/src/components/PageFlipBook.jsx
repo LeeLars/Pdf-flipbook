@@ -50,8 +50,8 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height, rendered]);
 
   return (
-    <div ref={ref} className="page bg-white shadow-lg overflow-hidden">
-      <canvas ref={canvasRef} style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }} />
+    <div ref={ref} className="page overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
+      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
     </div>
   );
 });
@@ -312,7 +312,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
             maxWidth={500}
             minHeight={400}
             maxHeight={700}
-            showCover={true}
+            showCover={false}
             mobileScrollSupport={true}
             onFlip={onFlip}
             className="shadow-2xl"

@@ -125,6 +125,63 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * Parse filename to generate formatted title
+ * Examples: 
+ *   "03_VT_MAART_2025.pdf" -> "Vrije Tijd - Maart 2025"
+ *   "LR_01_VT_JAN_2025.pdf" -> "Vrije Tijd - Januari 2025"
+ *   "02_VT_FEBR_2025.pdf" -> "Vrije Tijd - Februari 2025"
+ */
+function parseFilenameToTitle(filename) {
+  // Remove extension
+  const name = filename.replace(/\.pdf$/i, '');
+  
+  // Month mapping (Dutch abbreviations to full names)
+  const monthMap = {
+    'JAN': 'Januari',
+    'FEB': 'Februari',
+    'FEBR': 'Februari',
+    'MRT': 'Maart',
+    'MAART': 'Maart',
+    'APR': 'April',
+    'MEI': 'Mei',
+    'JUN': 'Juni',
+    'JUL': 'Juli',
+    'AUG': 'Augustus',
+    'SEP': 'September',
+    'SEPT': 'September',
+    'OKT': 'Oktober',
+    'NOV': 'November',
+    'DEC': 'December'
+  };
+  
+  // Try to extract month and year from filename
+  // Pattern: look for month abbreviation and 4-digit year
+  const parts = name.toUpperCase().split(/[_\-\s]+/);
+  
+  let month = null;
+  let year = null;
+  
+  for (const part of parts) {
+    // Check if it's a month
+    if (monthMap[part]) {
+      month = monthMap[part];
+    }
+    // Check if it's a year (4 digits starting with 20)
+    if (/^20\d{2}$/.test(part)) {
+      year = part;
+    }
+  }
+  
+  // If we found both month and year, format as "Vrije Tijd - Month Year"
+  if (month && year) {
+    return `Vrije Tijd - ${month} ${year}`;
+  }
+  
+  // Fallback: return cleaned up filename
+  return name.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
  * POST /api/magazines
  * Upload a new magazine (protected)
  */
@@ -133,15 +190,20 @@ router.post('/', authMiddleware, upload.single('file'), async (req, res) => {
   let coverUrl = null;
 
   try {
-    const { title, client_slug } = req.body;
+    let { title, client_slug } = req.body;
     const file = req.file;
 
     if (!file) {
       return res.status(400).json({ error: 'PDF bestand is verplicht' });
     }
 
-    if (!title || !client_slug) {
-      return res.status(400).json({ error: 'Titel en client_slug zijn verplicht' });
+    if (!client_slug) {
+      return res.status(400).json({ error: 'Client_slug is verplicht' });
+    }
+    
+    // Auto-generate title from filename if not provided or if it matches the raw filename
+    if (!title || title === file.originalname.replace(/\.pdf$/i, '')) {
+      title = parseFilenameToTitle(file.originalname);
     }
 
     // Validate PDF

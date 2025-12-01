@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Calendar, Filter } from 'lucide-react';
+import { Filter } from 'lucide-react';
 
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
@@ -80,11 +80,6 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 }
 
 function MagazineCard({ magazine, onClick }) {
-  const formattedDate = new Date(magazine.created_at).toLocaleDateString('nl-NL', {
-    year: 'numeric',
-    month: 'short'
-  });
-
   return (
     <button
       onClick={onClick}
@@ -115,15 +110,11 @@ function MagazineCard({ magazine, onClick }) {
         </div>
       </div>
 
-      {/* Info */}
+      {/* Title only - no date */}
       <div className="p-3">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-1">
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center">
           {magazine.title}
         </h3>
-        <div className="flex items-center gap-1 text-gray-400 text-xs">
-          <Calendar className="w-3 h-3" />
-          <span>{formattedDate}</span>
-        </div>
       </div>
     </button>
   );

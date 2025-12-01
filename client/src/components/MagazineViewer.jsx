@@ -112,16 +112,9 @@ export default function MagazineViewer({ clientSlug }) {
         {latestMagazine ? (
           <section className="mb-12">
             <div className="text-center mb-6">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
                 {latestMagazine.title}
               </h1>
-              <p className="text-gray-500 text-sm">
-                {new Date(latestMagazine.created_at).toLocaleDateString('nl-NL', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </p>
             </div>
             
             <PageFlipBook 
