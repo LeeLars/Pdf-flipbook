@@ -33,6 +33,33 @@ export default function AdminPanel({
     }
   }, [magazines]);
 
+  // Parse filename to generate formatted title
+  const parseFilenameToTitle = (filename) => {
+    const name = filename.replace(/\.pdf$/i, '');
+    
+    const monthMap = {
+      'JAN': 'Januari', 'FEB': 'Februari', 'FEBR': 'Februari',
+      'MRT': 'Maart', 'MAART': 'Maart', 'APR': 'April',
+      'MEI': 'Mei', 'JUN': 'Juni', 'JUL': 'Juli',
+      'AUG': 'Augustus', 'SEP': 'September', 'SEPT': 'September',
+      'OKT': 'Oktober', 'NOV': 'November', 'DEC': 'December'
+    };
+    
+    const parts = name.toUpperCase().split(/[_\-\s]+/);
+    let month = null;
+    let year = null;
+    
+    for (const part of parts) {
+      if (monthMap[part]) month = monthMap[part];
+      if (/^20\d{2}$/.test(part)) year = part;
+    }
+    
+    if (month && year) {
+      return `Vrije Tijd - ${month} ${year}`;
+    }
+    return name.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+
   // Dropzone configuration
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
@@ -41,9 +68,8 @@ export default function AdminPanel({
       setUploadError(null);
       setUploadSuccess(false);
       
-      // Auto-generate title from filename
-      const nameWithoutExt = file.name.replace(/\.pdf$/i, '');
-      setTitle(nameWithoutExt);
+      // Auto-generate formatted title from filename
+      setTitle(parseFilenameToTitle(file.name));
     }
   }, []);
 

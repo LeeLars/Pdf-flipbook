@@ -50,8 +50,8 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height, rendered]);
 
   return (
-    <div ref={ref} className="page overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+    <div ref={ref} className="page overflow-hidden" style={{ backgroundColor: 'white' }}>
+      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
     </div>
   );
 });
@@ -303,27 +303,28 @@ export default function PageFlipBook({ pdfUrl, title }) {
       {/* Flipbook */}
       <div className={`flex items-center justify-center py-8 ${isFullscreen ? 'h-[calc(100vh-60px)]' : 'min-h-[500px]'}`}>
         {pdf && totalPages > 0 && (
+          <div className="relative" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0,0,0,0.05)' }}>
           <HTMLFlipBook
             ref={flipBookRef}
             width={dimensions.width}
             height={dimensions.height}
-            size="stretch"
+            size="fixed"
             minWidth={280}
             maxWidth={500}
             minHeight={400}
             maxHeight={700}
-            showCover={false}
+            showCover={true}
             mobileScrollSupport={true}
             onFlip={onFlip}
-            className="shadow-2xl"
-            style={{}}
+            className=""
+            style={{ margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
-            flippingTime={600}
+            flippingTime={500}
             usePortrait={isMobile}
             startZIndex={0}
-            autoSize={true}
-            maxShadowOpacity={0.5}
+            autoSize={false}
+            maxShadowOpacity={0.6}
             showPageCorners={true}
             disableFlipByClick={false}
           >
@@ -337,6 +338,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
               />
             ))}
           </HTMLFlipBook>
+          </div>
         )}
       </div>
 
