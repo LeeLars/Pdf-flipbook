@@ -72,11 +72,10 @@ const migrate = async () => {
     console.log('✅ Clients tabel aangemaakt');
 
     console.log('🎉 Database migratie voltooid!');
-    process.exit(0);
   } catch (error) {
     console.error('❌ Migratie fout:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
-migrate();
+await migrate();
