@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Filter } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
 
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
@@ -80,6 +81,45 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 }
 
 function MagazineCard({ magazine, onClick }) {
+  const canvasRef = useRef(null);
+  const [coverGenerated, setCoverGenerated] = useState(false);
+
+  // Generate cover from PDF if no cover_url exists
+  useEffect(() => {
+    if (magazine.cover_url || !magazine.pdf_url || coverGenerated) return;
+
+    const generateCover = async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument(magazine.pdf_url).promise;
+        const page = await pdf.getPage(1);
+        
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const context = canvas.getContext('2d');
+        const viewport = page.getViewport({ scale: 1 });
+        
+        // Scale to fit nicely
+        const scale = 300 / viewport.width;
+        const scaledViewport = page.getViewport({ scale });
+        
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        
+        await page.render({
+          canvasContext: context,
+          viewport: scaledViewport
+        }).promise;
+        
+        setCoverGenerated(true);
+      } catch (err) {
+        console.error('Error generating cover:', err);
+      }
+    };
+
+    generateCover();
+  }, [magazine.pdf_url, magazine.cover_url, coverGenerated]);
+
   return (
     <button
       onClick={onClick}
@@ -95,11 +135,10 @@ function MagazineCard({ magazine, onClick }) {
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-            <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
+          <canvas 
+            ref={canvasRef}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
         )}
         
         {/* Hover overlay */}

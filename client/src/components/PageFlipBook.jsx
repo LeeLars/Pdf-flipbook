@@ -80,53 +80,12 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Natural paper page flip sound
+  // Use real page flip sound from CDN
   useEffect(() => {
-    const createFlipSound = () => {
-      try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Soft, natural paper flip sound
-        const duration = 0.4; // 400ms
-        const bufferSize = audioContext.sampleRate * duration;
-        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-        const data = buffer.getChannelData(0);
-        
-        for (let i = 0; i < bufferSize; i++) {
-          const t = i / bufferSize;
-          
-          // Soft envelope - gentle rise and fall like real paper
-          const envelope = Math.sin(t * Math.PI) * Math.exp(-t * 2);
-          
-          // Soft filtered noise (like paper sliding)
-          const noise = (Math.random() * 2 - 1);
-          
-          // Low-pass filter simulation for softer sound
-          const prevSample = i > 0 ? data[i-1] : 0;
-          const filtered = prevSample * 0.7 + noise * 0.3;
-          
-          // Soft swoosh
-          const swoosh = Math.sin(t * 8) * (1 - t) * 0.3;
-          
-          // Gentle landing sound at the end
-          const landTime = 0.75;
-          const land = t > landTime ? 
-            Math.exp(-(t - landTime) * 20) * Math.sin((t - landTime) * 300) * 0.2 : 0;
-          
-          data[i] = (filtered * 0.4 + swoosh + land) * envelope;
-        }
-        
-        return { audioContext, buffer };
-      } catch (e) {
-        console.log('Web Audio not supported');
-        return null;
-      }
-    };
-    
-    const sound = createFlipSound();
-    if (sound) {
-      audioRef.current = sound;
-    }
+    const audio = new Audio('https://cdn.freesound.org/previews/420/420019_4921277-lq.mp3');
+    audio.volume = 0.6;
+    audio.preload = 'auto';
+    audioRef.current = audio;
   }, []);
 
   // Calculate dimensions based on container, screen size, and detect mobile
@@ -210,24 +169,8 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const playFlipSound = useCallback(() => {
     if (soundEnabled && audioRef.current) {
       try {
-        const { audioContext, buffer } = audioRef.current;
-        
-        // Resume audio context if suspended (browser autoplay policy)
-        if (audioContext.state === 'suspended') {
-          audioContext.resume();
-        }
-        
-        // Create new source for each play
-        const source = audioContext.createBufferSource();
-        const gainNode = audioContext.createGain();
-        
-        source.buffer = buffer;
-        gainNode.gain.value = 0.8; // Louder volume
-        
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        source.start(0);
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(() => {});
       } catch (e) {
         console.log('Could not play sound');
       }
@@ -400,11 +343,6 @@ export default function PageFlipBook({ pdfUrl, title }) {
 
         {pdf && totalPages > 0 && (
           <div className="relative">
-            {/* Soft shadow underneath the book */}
-            <div 
-              className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] h-8 bg-black/20 blur-xl rounded-full"
-              style={{ zIndex: -1 }}
-            />
             <HTMLFlipBook
               ref={flipBookRef}
               width={dimensions.width}
