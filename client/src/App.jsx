@@ -1,7 +1,15 @@
 import { Routes, Route, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import MagazineViewer from './components/MagazineViewer';
 
 function App() {
+  // Detect if embedded in iframe and add class to html
+  useEffect(() => {
+    if (window.self !== window.top) {
+      document.documentElement.classList.add('embedded');
+    }
+  }, []);
+
   return (
     <Routes>
       {/* Main embed route - clientSlug determines which magazines to show */}

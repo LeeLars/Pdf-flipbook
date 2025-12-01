@@ -250,10 +250,10 @@ export default function PageFlipBook({ pdfUrl, title }) {
   return (
     <div 
       ref={containerRef}
-      className={`bg-gradient-to-b from-gray-100 to-gray-200 rounded-xl shadow-lg overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none' : ''}`}
+      className={`rounded-xl overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-gray-900' : ''}`}
     >
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white/80 backdrop-blur border-b">
+      <div className="flex items-center justify-between px-4 py-2 bg-transparent">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -402,7 +402,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
       )}
 
       {/* Navigation hint */}
-      <div className="text-center py-1 bg-white/80 backdrop-blur border-t">
+      <div className="text-center py-1">
         <p className="text-xs text-gray-400">
           {isMobile ? 'Swipe of gebruik de pijlen' : 'Klik op de hoek of gebruik ← → om te bladeren'}
         </p>
