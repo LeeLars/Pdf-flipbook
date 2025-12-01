@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Download, Volume2, VolumeX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, Volume2, VolumeX } from 'lucide-react';
 import HTMLFlipBook from 'react-pageflip';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -23,10 +23,10 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
         // Get viewport at scale 1 to get original dimensions
         const viewport = page.getViewport({ scale: 1 });
         
-        // Calculate scale to fit the page in the given dimensions
+        // Calculate scale to fit the page in the given dimensions - 3x for crisp quality
         const scaleX = width / viewport.width;
         const scaleY = height / viewport.height;
-        const scale = Math.min(scaleX, scaleY) * 2; // 2x for better quality
+        const scale = Math.min(scaleX, scaleY) * 3;
         
         const scaledViewport = page.getViewport({ scale });
 
@@ -80,25 +80,47 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Realistic page flip sound - paper turning
+  // Realistic page flip sound - crisp paper turning
   useEffect(() => {
-    // Create a more realistic paper flip sound using Web Audio API
     const createFlipSound = () => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Create noise for paper sound
-        const bufferSize = audioContext.sampleRate * 0.15; // 150ms
-        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-        const data = buffer.getChannelData(0);
+        // Longer, more realistic paper flip sound
+        const duration = 0.35; // 350ms
+        const bufferSize = audioContext.sampleRate * duration;
+        const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate); // Stereo
         
-        for (let i = 0; i < bufferSize; i++) {
-          // Create paper-like noise with envelope
-          const t = i / bufferSize;
-          const envelope = Math.sin(t * Math.PI) * Math.exp(-t * 3);
-          const noise = (Math.random() * 2 - 1) * 0.3;
-          const lowFreq = Math.sin(t * 200) * 0.1;
-          data[i] = (noise + lowFreq) * envelope;
+        for (let channel = 0; channel < 2; channel++) {
+          const data = buffer.getChannelData(channel);
+          
+          for (let i = 0; i < bufferSize; i++) {
+            const t = i / bufferSize;
+            
+            // Multi-layer envelope for realistic paper sound
+            const attack = Math.min(t * 10, 1);
+            const sustain = 1 - Math.pow(t, 0.5);
+            const envelope = attack * sustain;
+            
+            // Crisp high-frequency noise (paper texture)
+            const crispNoise = (Math.random() * 2 - 1) * 0.4;
+            
+            // Whoosh sound (air movement)
+            const whooshFreq = 80 + t * 200;
+            const whoosh = Math.sin(i / audioContext.sampleRate * whooshFreq * Math.PI * 2) * 0.15;
+            
+            // Paper crinkle (random pops)
+            const crinkle = Math.random() > 0.97 ? (Math.random() - 0.5) * 0.6 : 0;
+            
+            // Thump at the end (page landing)
+            const thumpTime = 0.7;
+            const thump = t > thumpTime ? Math.sin((t - thumpTime) * 500) * Math.exp(-(t - thumpTime) * 30) * 0.3 : 0;
+            
+            // Stereo variation
+            const stereoOffset = channel === 0 ? 0.02 : -0.02;
+            
+            data[i] = (crispNoise + whoosh + crinkle + thump + stereoOffset) * envelope;
+          }
         }
         
         return { audioContext, buffer };
@@ -114,27 +136,49 @@ export default function PageFlipBook({ pdfUrl, title }) {
     }
   }, []);
 
-  // Calculate dimensions based on container and detect mobile
+  // Calculate dimensions based on container, screen size, and detect mobile
   useEffect(() => {
     const updateDimensions = () => {
-      if (containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth;
-        const mobile = containerWidth < 768;
-        setIsMobile(mobile);
+      const screenWidth = window.innerWidth;
+      const screenHeight = window.innerHeight;
+      const mobile = screenWidth < 768;
+      setIsMobile(mobile);
+      
+      if (isFullscreen) {
+        // Fullscreen: maximize page size based on screen
+        const availableHeight = screenHeight - 120; // Leave room for toolbar
+        const availableWidth = screenWidth - (mobile ? 40 : 200); // Side margins
         
-        // On mobile: single page, larger. On desktop: two pages side by side
-        const maxWidth = mobile 
-          ? Math.min(containerWidth * 0.9, 400) 
-          : Math.min(containerWidth * 0.45, 450);
-        const height = maxWidth * 1.414; // A4 ratio
-        setDimensions({ width: maxWidth, height });
+        if (mobile) {
+          // Single page in fullscreen
+          const pageWidth = Math.min(availableWidth * 0.95, availableHeight / 1.414);
+          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+        } else {
+          // Two pages side by side
+          const pageWidth = Math.min(availableWidth / 2 - 10, availableHeight / 1.414);
+          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+        }
+      } else {
+        // Normal view: scale based on available space
+        const containerWidth = containerRef.current?.clientWidth || screenWidth;
+        const maxHeight = Math.min(screenHeight * 0.7, 700);
+        
+        if (mobile) {
+          // Single page on mobile
+          const pageWidth = Math.min(containerWidth * 0.9, maxHeight / 1.414);
+          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+        } else {
+          // Two pages on desktop - scale based on screen
+          const pageWidth = Math.min(containerWidth * 0.4, maxHeight / 1.414, 450);
+          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+        }
       }
     };
 
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
+  }, [isFullscreen]);
 
   // Load PDF
   useEffect(() => {
@@ -177,7 +221,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
         const gainNode = audioContext.createGain();
         
         source.buffer = buffer;
-        gainNode.gain.value = 0.4; // Volume
+        gainNode.gain.value = 0.8; // Louder volume
         
         source.connect(gainNode);
         gainNode.connect(audioContext.destination);
@@ -204,16 +248,33 @@ export default function PageFlipBook({ pdfUrl, title }) {
     flipBookRef.current?.pageFlip()?.flipNext();
   };
 
-  // Fullscreen
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+  // Fullscreen toggle with proper state management
+  const toggleFullscreen = async () => {
+    try {
+      if (!isFullscreen) {
+        await containerRef.current?.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        }
+        setIsFullscreen(false);
+      }
+    } catch (e) {
+      // Fallback: just toggle the state for CSS-based fullscreen
+      setIsFullscreen(!isFullscreen);
     }
   };
+
+  // Listen for fullscreen changes (e.g., user presses Escape)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -314,9 +375,13 @@ export default function PageFlipBook({ pdfUrl, title }) {
           <button
             onClick={toggleFullscreen}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Volledig scherm"
+            title={isFullscreen ? 'Verkleinen' : 'Volledig scherm'}
           >
-            <Maximize2 className="w-5 h-5 text-gray-600" />
+            {isFullscreen ? (
+              <Minimize2 className="w-5 h-5 text-gray-600" />
+            ) : (
+              <Maximize2 className="w-5 h-5 text-gray-600" />
+            )}
           </button>
         </div>
       </div>
@@ -340,21 +405,21 @@ export default function PageFlipBook({ pdfUrl, title }) {
             height={dimensions.height}
             size="fixed"
             minWidth={200}
-            maxWidth={500}
+            maxWidth={800}
             minHeight={280}
-            maxHeight={700}
-            showCover={false}
+            maxHeight={1000}
+            showCover={true}
             mobileScrollSupport={true}
             onFlip={onFlip}
             className=""
             style={{ margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
-            flippingTime={500}
+            flippingTime={600}
             usePortrait={isMobile}
             startZIndex={0}
             autoSize={false}
-            maxShadowOpacity={0.6}
+            maxShadowOpacity={0.7}
             showPageCorners={true}
             disableFlipByClick={false}
           >
