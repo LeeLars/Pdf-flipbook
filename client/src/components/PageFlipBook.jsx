@@ -80,12 +80,55 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Use real page flip sound from CDN
+  // Natural paper page flip sound
   useEffect(() => {
-    const audio = new Audio('https://cdn.freesound.org/previews/420/420019_4921277-lq.mp3');
-    audio.volume = 0.6;
-    audio.preload = 'auto';
-    audioRef.current = audio;
+    const createFlipSound = () => {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Longer, more realistic paper flip sound
+        const duration = 0.35;
+        const bufferSize = audioContext.sampleRate * duration;
+        const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate);
+        
+        for (let channel = 0; channel < 2; channel++) {
+          const data = buffer.getChannelData(channel);
+          
+          for (let i = 0; i < bufferSize; i++) {
+            const t = i / bufferSize;
+            
+            // Multi-layer envelope
+            const attack = Math.min(t * 10, 1);
+            const sustain = 1 - Math.pow(t, 0.5);
+            const envelope = attack * sustain;
+            
+            // Crisp noise
+            const crispNoise = (Math.random() * 2 - 1) * 0.4;
+            
+            // Whoosh
+            const whooshFreq = 80 + t * 200;
+            const whoosh = Math.sin(i / audioContext.sampleRate * whooshFreq * Math.PI * 2) * 0.15;
+            
+            // Paper crinkle
+            const crinkle = Math.random() > 0.97 ? (Math.random() - 0.5) * 0.6 : 0;
+            
+            // Thump at end
+            const thumpTime = 0.7;
+            const thump = t > thumpTime ? Math.sin((t - thumpTime) * 500) * Math.exp(-(t - thumpTime) * 30) * 0.3 : 0;
+            
+            const stereoOffset = channel === 0 ? 0.02 : -0.02;
+            
+            data[i] = (crispNoise + whoosh + crinkle + thump + stereoOffset) * envelope;
+          }
+        }
+        
+        return { audioContext, buffer };
+      } catch (e) {
+        return null;
+      }
+    };
+    
+    audioRef.current = createFlipSound();
   }, []);
 
   // Calculate dimensions based on container, screen size, and detect mobile
@@ -97,20 +140,23 @@ export default function PageFlipBook({ pdfUrl, title }) {
       setIsMobile(mobile);
       
       if (isFullscreen) {
-        // Fullscreen: maximize page size based on screen
-        const availableHeight = screenHeight - 100;
-        const availableWidth = screenWidth - (mobile ? 20 : 160);
+        // Fullscreen: MAXIMIZE page size - fill the screen
+        const availableHeight = screenHeight - 80;
+        const availableWidth = screenWidth - 100;
         
         if (mobile) {
-          // Single page in fullscreen - fill screen
-          const pageHeight = availableHeight * 0.9;
-          const pageWidth = pageHeight / 1.414;
-          setDimensions({ width: Math.min(pageWidth, availableWidth * 0.95), height: pageHeight });
+          // Single page fullscreen - as big as possible
+          const maxByHeight = availableHeight * 0.95;
+          const maxByWidth = availableWidth * 0.95;
+          const pageHeight = Math.min(maxByHeight, maxByWidth * 1.414);
+          setDimensions({ width: pageHeight / 1.414, height: pageHeight });
         } else {
-          // Two pages side by side - maximize
-          const pageHeight = availableHeight * 0.95;
-          const pageWidth = Math.min(pageHeight / 1.414, availableWidth / 2 - 20);
-          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+          // Two pages - maximize height, fit width
+          const maxByHeight = availableHeight * 0.92;
+          const maxByWidth = (availableWidth - 40) / 2; // Two pages side by side
+          const pageWidth = Math.min(maxByHeight / 1.414, maxByWidth);
+          const pageHeight = pageWidth * 1.414;
+          setDimensions({ width: pageWidth, height: pageHeight });
         }
       } else {
         // Normal view: scale based on available space - BIGGER
@@ -169,8 +215,21 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const playFlipSound = useCallback(() => {
     if (soundEnabled && audioRef.current) {
       try {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(() => {});
+        const { audioContext, buffer } = audioRef.current;
+        
+        if (audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
+        
+        const source = audioContext.createBufferSource();
+        const gainNode = audioContext.createGain();
+        
+        source.buffer = buffer;
+        gainNode.gain.value = 0.7;
+        
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        source.start(0);
       } catch (e) {
         console.log('Could not play sound');
       }
@@ -255,10 +314,10 @@ export default function PageFlipBook({ pdfUrl, title }) {
   return (
     <div 
       ref={containerRef}
-      className={`rounded-xl overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-gray-900' : ''}`}
+      className={`rounded-xl overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-gradient-to-b from-gray-100 to-gray-200' : ''}`}
     >
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-transparent">
+      <div className={`flex items-center justify-between px-4 py-2 ${isFullscreen ? 'bg-white/90 backdrop-blur' : 'bg-transparent'}`}>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -342,16 +401,21 @@ export default function PageFlipBook({ pdfUrl, title }) {
         </button>
 
         {pdf && totalPages > 0 && (
-          <div className="relative">
+          <div 
+            className="relative"
+            style={{ 
+              filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.3)) drop-shadow(0 8px 16px rgba(0,0,0,0.2))'
+            }}
+          >
             <HTMLFlipBook
               ref={flipBookRef}
               width={dimensions.width}
               height={dimensions.height}
               size="fixed"
               minWidth={200}
-              maxWidth={800}
+              maxWidth={1000}
               minHeight={280}
-              maxHeight={1200}
+              maxHeight={1400}
               showCover={true}
               mobileScrollSupport={true}
               onFlip={onFlip}
@@ -359,7 +423,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
               style={{ margin: 0, padding: 0 }}
               startPage={0}
               drawShadow={true}
-              flippingTime={600}
+              flippingTime={500}
               usePortrait={isMobile}
               startZIndex={0}
               autoSize={false}
