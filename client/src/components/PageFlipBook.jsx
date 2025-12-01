@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Maximize2, Download, Volume2, VolumeX } from
 import HTMLFlipBook from 'react-pageflip';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Page component for the flipbook
+// Page component for the flipbook - HIGH RESOLUTION
 const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   const canvasRef = useRef(null);
   const [rendered, setRendered] = useState(false);
@@ -17,12 +17,23 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
 
+        // Use higher scale for better resolution (2x for retina displays)
         const viewport = page.getViewport({ scale: 1 });
-        const scale = Math.min(width / viewport.width, height / viewport.height);
+        const pixelRatio = window.devicePixelRatio || 2;
+        const scale = Math.min(width / viewport.width, height / viewport.height) * pixelRatio;
         const scaledViewport = page.getViewport({ scale });
 
+        // Set canvas size to high resolution
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
+        
+        // Scale down with CSS for sharp display
+        canvas.style.width = `${scaledViewport.width / pixelRatio}px`;
+        canvas.style.height = `${scaledViewport.height / pixelRatio}px`;
+
+        // Enable image smoothing for better quality
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
 
         await page.render({
           canvasContext: context,
@@ -39,8 +50,8 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height, rendered]);
 
   return (
-    <div ref={ref} className="page bg-white shadow-lg">
-      <canvas ref={canvasRef} className="w-full h-full" />
+    <div ref={ref} className="page bg-white shadow-lg overflow-hidden">
+      <canvas ref={canvasRef} style={{ display: 'block', maxWidth: '100%', maxHeight: '100%' }} />
     </div>
   );
 });
@@ -61,10 +72,38 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Page flip sound
+  // Realistic page flip sound - paper turning
   useEffect(() => {
-    audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2LkZeWj4N3bGVjZ3F+ipOXl5KKgHZsZWRpcH2Ij5OTkIqCeXFrampvd4CIjpCPjIiCe3VwbW1wd3+Fio2OjYqGgXx3c3FydXl+g4iKi4qIhYJ+enZ0c3R3e3+DhoiIh4WCf3x5d3Z2d3l8f4KEhYWEgoB9e3l4d3d4eXt9f4GCg4OCgH58e3l4eHh5ent9f4CBgoGAf358e3p5eXl6e3x9f4CAgYCAf359fHt6enp6e3x9fn9/gIB/f359fHx7e3t7fH1+fn9/f39/fn59fXx8fHx8fX1+fn5/f39/fn5+fX19fX19fX5+fn5+f39/f35+fn5+fn5+fn5+fn5+fn9/f39/f35+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+fn5+');
-    audioRef.current.volume = 0.3;
+    // Create a more realistic paper flip sound using Web Audio API
+    const createFlipSound = () => {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Create noise for paper sound
+        const bufferSize = audioContext.sampleRate * 0.15; // 150ms
+        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < bufferSize; i++) {
+          // Create paper-like noise with envelope
+          const t = i / bufferSize;
+          const envelope = Math.sin(t * Math.PI) * Math.exp(-t * 3);
+          const noise = (Math.random() * 2 - 1) * 0.3;
+          const lowFreq = Math.sin(t * 200) * 0.1;
+          data[i] = (noise + lowFreq) * envelope;
+        }
+        
+        return { audioContext, buffer };
+      } catch (e) {
+        console.log('Web Audio not supported');
+        return null;
+      }
+    };
+    
+    const sound = createFlipSound();
+    if (sound) {
+      audioRef.current = sound;
+    }
   }, []);
 
   // Calculate dimensions based on container
@@ -111,8 +150,28 @@ export default function PageFlipBook({ pdfUrl, title }) {
   // Play flip sound
   const playFlipSound = useCallback(() => {
     if (soundEnabled && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
+      try {
+        const { audioContext, buffer } = audioRef.current;
+        
+        // Resume audio context if suspended (browser autoplay policy)
+        if (audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
+        
+        // Create new source for each play
+        const source = audioContext.createBufferSource();
+        const gainNode = audioContext.createGain();
+        
+        source.buffer = buffer;
+        gainNode.gain.value = 0.4; // Volume
+        
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        source.start(0);
+      } catch (e) {
+        console.log('Could not play sound');
+      }
     }
   }, [soundEnabled]);
 
