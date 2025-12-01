@@ -55,14 +55,10 @@ html, body, #root {
   max-height: 95vh;
 }
 
-/* Admin button - subtle */
+/* Admin button - subtle, at bottom of page */
 .admin-trigger {
-  position: fixed;
-  bottom: 12px;
-  right: 12px;
   opacity: 0.3;
   transition: opacity 0.3s ease;
-  z-index: 100;
 }
 
 .admin-trigger:hover {

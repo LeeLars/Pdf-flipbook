@@ -19,8 +19,7 @@ export default function AdminPanel({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [title, setTitle] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [draggedItem, setDraggedItem] = useState(null);
   const [orderedMagazines, setOrderedMagazines] = useState([]);
   
@@ -60,16 +59,16 @@ export default function AdminPanel({
     return name.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
   };
 
-  // Dropzone configuration
+  // Dropzone configuration - multiple files
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      setSelectedFile(file);
+      const filesWithTitles = acceptedFiles.map(file => ({
+        file,
+        title: parseFilenameToTitle(file.name)
+      }));
+      setSelectedFiles(filesWithTitles);
       setUploadError(null);
       setUploadSuccess(false);
-      
-      // Auto-generate formatted title from filename
-      setTitle(parseFilenameToTitle(file.name));
     }
   }, []);
 
@@ -78,35 +77,45 @@ export default function AdminPanel({
     accept: {
       'application/pdf': ['.pdf']
     },
-    maxFiles: 1,
-    maxSize: 100 * 1024 * 1024 // 100MB
+    multiple: true,
+    maxSize: 100 * 1024 * 1024 // 100MB per file
   });
 
-  // Handle upload
+  // Remove a file from selection
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Handle upload of all files
   const handleUpload = async () => {
-    if (!selectedFile || !title.trim()) {
-      setUploadError('Selecteer een PDF en vul een titel in');
+    if (selectedFiles.length === 0) {
+      setUploadError('Selecteer minstens één PDF');
       return;
     }
 
     setUploading(true);
     setUploadError(null);
-    setUploadProgress(10);
+    
+    let successCount = 0;
+    const totalFiles = selectedFiles.length;
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('title', title.trim());
-      formData.append('client_slug', clientSlug);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const { file, title } = selectedFiles[i];
+        setUploadProgress(Math.round(((i) / totalFiles) * 100));
 
-      setUploadProgress(30);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title.trim());
+        formData.append('client_slug', clientSlug);
 
-      const response = await api.post('/magazines', formData);
+        await api.post('/magazines', formData);
+        successCount++;
+      }
 
       setUploadProgress(100);
       setUploadSuccess(true);
-      setSelectedFile(null);
-      setTitle('');
+      setSelectedFiles([]);
       
       // Refresh magazine list
       onUploadSuccess();
@@ -117,7 +126,7 @@ export default function AdminPanel({
       }, 3000);
     } catch (error) {
       console.error('Upload error:', error);
-      setUploadError(error.response?.data?.error || 'Upload mislukt');
+      setUploadError(`${successCount}/${totalFiles} geüpload. Fout: ${error.response?.data?.error || 'Upload mislukt'}`);
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -239,46 +248,47 @@ export default function AdminPanel({
             {/* Dropzone */}
             <div
               {...getRootProps()}
-              className={`dropzone ${isDragActive ? 'active' : ''} ${selectedFile ? 'border-green-400 bg-green-50' : ''}`}
+              className={`dropzone ${isDragActive ? 'active' : ''} ${selectedFiles.length > 0 ? 'border-green-400 bg-green-50' : ''}`}
             >
               <input {...getInputProps()} />
               
-              {selectedFile ? (
-                <div className="flex items-center gap-3">
-                  <FileText className="w-10 h-10 text-green-600" />
-                  <div className="text-left">
-                    <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
+              {selectedFiles.length > 0 ? (
+                <div className="text-center">
+                  <FileText className="w-10 h-10 text-green-600 mx-auto mb-2" />
+                  <p className="font-medium text-gray-900">{selectedFiles.length} bestand(en) geselecteerd</p>
+                  <p className="text-sm text-gray-500">Klik om meer toe te voegen</p>
                 </div>
               ) : (
                 <>
                   <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                   <p className="text-gray-600 font-medium">
-                    {isDragActive ? 'Laat los om te uploaden' : 'Sleep je PDF hierheen'}
+                    {isDragActive ? 'Laat los om te uploaden' : 'Sleep je PDF\'s hierheen'}
                   </p>
                   <p className="text-sm text-gray-400 mt-1">
-                    of klik om een bestand te selecteren
+                    of klik om bestanden te selecteren (meerdere mogelijk)
                   </p>
                 </>
               )}
             </div>
 
-            {/* Title input */}
-            {selectedFile && (
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Titel
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  placeholder="bijv. Vrije Tijd - Augustus 2025"
-                />
+            {/* Selected files list */}
+            {selectedFiles.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {selectedFiles.map((item, index) => (
+                  <div key={index} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                    <FileText className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
+                      <p className="text-xs text-gray-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeFile(index); }}
+                      className="p-1 hover:bg-gray-200 rounded"
+                    >
+                      <X className="w-4 h-4 text-gray-500" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -309,19 +319,18 @@ export default function AdminPanel({
             {uploadSuccess && (
               <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
                 <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                <span className="text-sm">Magazine succesvol geüpload!</span>
+                <span className="text-sm">Magazines succesvol geüpload!</span>
               </div>
             )}
 
             {/* Upload button */}
-            {selectedFile && !uploading && (
+            {selectedFiles.length > 0 && !uploading && (
               <button
                 onClick={handleUpload}
-                disabled={!title.trim()}
-                className="mt-4 w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="mt-4 w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <Upload className="w-5 h-5" />
-                Uploaden
+                {selectedFiles.length === 1 ? 'Uploaden' : `${selectedFiles.length} bestanden uploaden`}
               </button>
             )}
           </div>

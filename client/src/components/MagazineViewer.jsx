@@ -150,16 +150,18 @@ export default function MagazineViewer({ clientSlug }) {
             />
           </section>
         )}
-      </div>
 
-      {/* Subtle Admin Button */}
-      <button
-        onClick={handleAdminClick}
-        className="admin-trigger p-2 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
-        title="Beheer"
-      >
-        <Settings className="w-5 h-5 text-gray-600" />
-      </button>
+        {/* Subtle Admin Button - at bottom of content */}
+        <div className="flex justify-end mt-12 pb-4">
+          <button
+            onClick={handleAdminClick}
+            className="admin-trigger p-2 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
+            title="Beheer"
+          >
+            <Settings className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+      </div>
 
       {/* Login Modal */}
       <LoginModal 

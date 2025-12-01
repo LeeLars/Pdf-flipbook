@@ -17,23 +17,30 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
 
-        // Use higher scale for better resolution (2x for retina displays)
+        // Clear canvas first
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Get viewport at scale 1 to get original dimensions
         const viewport = page.getViewport({ scale: 1 });
-        const pixelRatio = window.devicePixelRatio || 2;
-        const scale = Math.min(width / viewport.width, height / viewport.height) * pixelRatio;
+        
+        // Calculate scale to fit the page in the given dimensions
+        const scaleX = width / viewport.width;
+        const scaleY = height / viewport.height;
+        const scale = Math.min(scaleX, scaleY) * 2; // 2x for better quality
+        
         const scaledViewport = page.getViewport({ scale });
 
-        // Set canvas size to high resolution
+        // Set canvas size
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
         
-        // Scale down with CSS for sharp display
-        canvas.style.width = `${scaledViewport.width / pixelRatio}px`;
-        canvas.style.height = `${scaledViewport.height / pixelRatio}px`;
+        // CSS size for display
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
 
-        // Enable image smoothing for better quality
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = 'high';
+        // White background
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
         await page.render({
           canvasContext: context,
@@ -50,8 +57,8 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height, rendered]);
 
   return (
-    <div ref={ref} className="page overflow-hidden" style={{ backgroundColor: 'white' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
+    <div ref={ref} className="page" style={{ backgroundColor: 'white', width, height }}>
+      <canvas ref={canvasRef} />
     </div>
   );
 });
@@ -282,14 +289,21 @@ export default function PageFlipBook({ pdfUrl, title }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <a
-            href={pdfUrl}
-            download={title}
+          <button
+            onClick={() => {
+              const link = document.createElement('a');
+              link.href = pdfUrl;
+              link.download = `${title}.pdf`;
+              link.target = '_blank';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             title="Download PDF"
           >
             <Download className="w-5 h-5 text-gray-600" />
-          </a>
+          </button>
           <button
             onClick={toggleFullscreen}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
