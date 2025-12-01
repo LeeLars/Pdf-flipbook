@@ -17,16 +17,22 @@ const seed = async () => {
       [email]
     );
 
+    const passwordHash = await bcrypt.hash(password, 12);
+    
     if (existingUser.rows.length === 0) {
       // Create admin user
-      const passwordHash = await bcrypt.hash(password, 12);
       await query(
         `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3)`,
         [email, passwordHash, 'admin']
       );
       console.log(`✅ Admin gebruiker aangemaakt: ${email}`);
     } else {
-      console.log(`ℹ️ Admin gebruiker bestaat al: ${email}`);
+      // Update existing user password
+      await query(
+        `UPDATE users SET password_hash = $1, email = $2 WHERE email = 'admin@example.com' OR email = $2`,
+        [passwordHash, email]
+      );
+      console.log(`✅ Admin wachtwoord bijgewerkt voor: ${email}`);
     }
 
     // Create default client
