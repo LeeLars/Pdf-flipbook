@@ -5,6 +5,9 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    fontFamily: {
+      sans: ['"Yanone Kaffeesatz"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+    },
     extend: {
       colors: {
         primary: {
