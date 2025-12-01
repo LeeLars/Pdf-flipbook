@@ -80,47 +80,40 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Realistic page flip sound - crisp paper turning
+  // Natural paper page flip sound
   useEffect(() => {
     const createFlipSound = () => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Longer, more realistic paper flip sound
-        const duration = 0.35; // 350ms
+        // Soft, natural paper flip sound
+        const duration = 0.4; // 400ms
         const bufferSize = audioContext.sampleRate * duration;
-        const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate); // Stereo
+        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
         
-        for (let channel = 0; channel < 2; channel++) {
-          const data = buffer.getChannelData(channel);
+        for (let i = 0; i < bufferSize; i++) {
+          const t = i / bufferSize;
           
-          for (let i = 0; i < bufferSize; i++) {
-            const t = i / bufferSize;
-            
-            // Multi-layer envelope for realistic paper sound
-            const attack = Math.min(t * 10, 1);
-            const sustain = 1 - Math.pow(t, 0.5);
-            const envelope = attack * sustain;
-            
-            // Crisp high-frequency noise (paper texture)
-            const crispNoise = (Math.random() * 2 - 1) * 0.4;
-            
-            // Whoosh sound (air movement)
-            const whooshFreq = 80 + t * 200;
-            const whoosh = Math.sin(i / audioContext.sampleRate * whooshFreq * Math.PI * 2) * 0.15;
-            
-            // Paper crinkle (random pops)
-            const crinkle = Math.random() > 0.97 ? (Math.random() - 0.5) * 0.6 : 0;
-            
-            // Thump at the end (page landing)
-            const thumpTime = 0.7;
-            const thump = t > thumpTime ? Math.sin((t - thumpTime) * 500) * Math.exp(-(t - thumpTime) * 30) * 0.3 : 0;
-            
-            // Stereo variation
-            const stereoOffset = channel === 0 ? 0.02 : -0.02;
-            
-            data[i] = (crispNoise + whoosh + crinkle + thump + stereoOffset) * envelope;
-          }
+          // Soft envelope - gentle rise and fall like real paper
+          const envelope = Math.sin(t * Math.PI) * Math.exp(-t * 2);
+          
+          // Soft filtered noise (like paper sliding)
+          const noise = (Math.random() * 2 - 1);
+          
+          // Low-pass filter simulation for softer sound
+          const prevSample = i > 0 ? data[i-1] : 0;
+          const filtered = prevSample * 0.7 + noise * 0.3;
+          
+          // Soft swoosh
+          const swoosh = Math.sin(t * 8) * (1 - t) * 0.3;
+          
+          // Gentle landing sound at the end
+          const landTime = 0.75;
+          const land = t > landTime ? 
+            Math.exp(-(t - landTime) * 20) * Math.sin((t - landTime) * 300) * 0.2 : 0;
+          
+          data[i] = (filtered * 0.4 + swoosh + land) * envelope;
         }
         
         return { audioContext, buffer };
@@ -146,30 +139,38 @@ export default function PageFlipBook({ pdfUrl, title }) {
       
       if (isFullscreen) {
         // Fullscreen: maximize page size based on screen
-        const availableHeight = screenHeight - 120; // Leave room for toolbar
-        const availableWidth = screenWidth - (mobile ? 40 : 200); // Side margins
+        const availableHeight = screenHeight - 100;
+        const availableWidth = screenWidth - (mobile ? 20 : 160);
         
         if (mobile) {
-          // Single page in fullscreen
-          const pageWidth = Math.min(availableWidth * 0.95, availableHeight / 1.414);
-          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+          // Single page in fullscreen - fill screen
+          const pageHeight = availableHeight * 0.9;
+          const pageWidth = pageHeight / 1.414;
+          setDimensions({ width: Math.min(pageWidth, availableWidth * 0.95), height: pageHeight });
         } else {
-          // Two pages side by side
-          const pageWidth = Math.min(availableWidth / 2 - 10, availableHeight / 1.414);
+          // Two pages side by side - maximize
+          const pageHeight = availableHeight * 0.95;
+          const pageWidth = Math.min(pageHeight / 1.414, availableWidth / 2 - 20);
           setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
         }
       } else {
-        // Normal view: scale based on available space
+        // Normal view: scale based on available space - BIGGER
         const containerWidth = containerRef.current?.clientWidth || screenWidth;
-        const maxHeight = Math.min(screenHeight * 0.7, 700);
+        const maxHeight = Math.min(screenHeight * 0.75, 800);
         
         if (mobile) {
-          // Single page on mobile
-          const pageWidth = Math.min(containerWidth * 0.9, maxHeight / 1.414);
-          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
+          // Single page on mobile - fill width nicely
+          const pageWidth = containerWidth * 0.85;
+          const pageHeight = Math.min(pageWidth * 1.414, screenHeight * 0.7);
+          setDimensions({ width: pageHeight / 1.414, height: pageHeight });
         } else {
-          // Two pages on desktop - scale based on screen
-          const pageWidth = Math.min(containerWidth * 0.4, maxHeight / 1.414, 450);
+          // Two pages on desktop - bigger, based on screen size
+          // Use more of the available space
+          const idealHeight = screenHeight * 0.65;
+          const idealWidth = idealHeight / 1.414;
+          // Make sure two pages fit side by side with some margin
+          const maxPageWidth = (containerWidth - 200) / 2;
+          const pageWidth = Math.min(idealWidth, maxPageWidth, 500);
           setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
         }
       }
@@ -387,52 +388,57 @@ export default function PageFlipBook({ pdfUrl, title }) {
       </div>
 
       {/* Flipbook with side navigation */}
-      <div className={`flex items-center justify-center py-4 gap-2 md:gap-4 ${isFullscreen ? 'h-[calc(100vh-60px)]' : 'min-h-[400px] md:min-h-[500px]'}`}>
+      <div className={`flex items-center justify-center py-4 gap-4 md:gap-8 ${isFullscreen ? 'h-[calc(100vh-60px)]' : ''}`}>
         {/* Left navigation arrow */}
         <button
           onClick={goToPrevPage}
           disabled={currentPage <= 0}
-          className="hidden md:flex p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="hidden md:flex p-3 rounded-full bg-white/80 shadow-md hover:bg-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-6 h-6 text-gray-700" />
         </button>
 
         {pdf && totalPages > 0 && (
-          <div className="relative" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0,0,0,0.05)' }}>
-          <HTMLFlipBook
-            ref={flipBookRef}
-            width={dimensions.width}
-            height={dimensions.height}
-            size="fixed"
-            minWidth={200}
-            maxWidth={800}
-            minHeight={280}
-            maxHeight={1000}
-            showCover={true}
-            mobileScrollSupport={true}
-            onFlip={onFlip}
-            className=""
-            style={{ margin: 0, padding: 0 }}
-            startPage={0}
-            drawShadow={true}
-            flippingTime={600}
-            usePortrait={isMobile}
-            startZIndex={0}
-            autoSize={false}
-            maxShadowOpacity={0.7}
-            showPageCorners={true}
-            disableFlipByClick={false}
-          >
-            {Array.from({ length: totalPages }, (_, i) => (
-              <Page
-                key={i}
-                pageNum={i + 1}
-                pdf={pdf}
-                width={dimensions.width}
-                height={dimensions.height}
-              />
-            ))}
-          </HTMLFlipBook>
+          <div className="relative">
+            {/* Soft shadow underneath the book */}
+            <div 
+              className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] h-8 bg-black/20 blur-xl rounded-full"
+              style={{ zIndex: -1 }}
+            />
+            <HTMLFlipBook
+              ref={flipBookRef}
+              width={dimensions.width}
+              height={dimensions.height}
+              size="fixed"
+              minWidth={200}
+              maxWidth={800}
+              minHeight={280}
+              maxHeight={1200}
+              showCover={true}
+              mobileScrollSupport={true}
+              onFlip={onFlip}
+              className=""
+              style={{ margin: 0, padding: 0 }}
+              startPage={0}
+              drawShadow={true}
+              flippingTime={600}
+              usePortrait={isMobile}
+              startZIndex={0}
+              autoSize={false}
+              maxShadowOpacity={0.5}
+              showPageCorners={true}
+              disableFlipByClick={false}
+            >
+              {Array.from({ length: totalPages }, (_, i) => (
+                <Page
+                  key={i}
+                  pageNum={i + 1}
+                  pdf={pdf}
+                  width={dimensions.width}
+                  height={dimensions.height}
+                />
+              ))}
+            </HTMLFlipBook>
           </div>
         )}
 
@@ -440,7 +446,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
         <button
           onClick={goToNextPage}
           disabled={currentPage >= totalPages - (isMobile ? 1 : 2)}
-          className="hidden md:flex p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="hidden md:flex p-3 rounded-full bg-white/80 shadow-md hover:bg-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
         >
           <ChevronRight className="w-6 h-6 text-gray-700" />
         </button>
