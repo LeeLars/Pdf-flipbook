@@ -17,10 +17,6 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background-color: #f8fafc;
-}
-
 /* Flipbook styles */
 .flipbook-container {
   perspective: 2000px;

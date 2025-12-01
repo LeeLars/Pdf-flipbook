@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   X, Upload, Trash2, Eye, EyeOff, Loader2, 
-  CheckCircle, AlertCircle, LogOut, FileText 
+  CheckCircle, AlertCircle, LogOut, FileText, GripVertical 
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../utils/api';
@@ -21,8 +21,17 @@ export default function AdminPanel({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [title, setTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [orderedMagazines, setOrderedMagazines] = useState([]);
   
   const { logout, user } = useAuthStore();
+
+  // Keep ordered magazines in sync
+  useState(() => {
+    if (magazines) {
+      setOrderedMagazines([...magazines]);
+    }
+  }, [magazines]);
 
   // Dropzone configuration
   const onDrop = useCallback((acceptedFiles) => {
@@ -123,7 +132,46 @@ export default function AdminPanel({
     onClose();
   };
 
+  // Drag and drop handlers for reordering
+  const handleDragStart = (e, index) => {
+    setDraggedItem(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedItem === null || draggedItem === index) return;
+    
+    const items = [...(magazines || [])];
+    const draggedItemContent = items[draggedItem];
+    items.splice(draggedItem, 1);
+    items.splice(index, 0, draggedItemContent);
+    
+    setOrderedMagazines(items);
+    setDraggedItem(index);
+  };
+
+  const handleDragEnd = async () => {
+    if (draggedItem === null) return;
+    
+    // Save new order to backend
+    try {
+      const orderData = orderedMagazines.map((mag, index) => ({
+        id: mag.id,
+        sort_order: index
+      }));
+      await api.patch('/magazines/reorder', { order: orderData });
+      onRefresh();
+    } catch (error) {
+      console.error('Reorder error:', error);
+    }
+    
+    setDraggedItem(null);
+  };
+
   if (!isOpen) return null;
+  
+  const displayMagazines = orderedMagazines.length > 0 ? orderedMagazines : magazines;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center modal-backdrop bg-black/50">
@@ -258,13 +306,25 @@ export default function AdminPanel({
               Bestaande edities ({magazines?.length || 0})
             </h3>
 
-            {magazines && magazines.length > 0 ? (
-              <div className="space-y-3">
-                {magazines.map((magazine) => (
+            {displayMagazines && displayMagazines.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-400 mb-2">Sleep om de volgorde te wijzigen</p>
+                {displayMagazines.map((magazine, index) => (
                   <div 
                     key={magazine.id}
-                    className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-move transition-all ${
+                      draggedItem === index ? 'opacity-50 scale-95' : ''
+                    }`}
                   >
+                    {/* Drag handle */}
+                    <div className="text-gray-400 hover:text-gray-600">
+                      <GripVertical className="w-5 h-5" />
+                    </div>
+
                     {/* Thumbnail */}
                     <div className="w-12 h-16 bg-gray-200 rounded overflow-hidden flex-shrink-0">
                       {magazine.cover_url ? (

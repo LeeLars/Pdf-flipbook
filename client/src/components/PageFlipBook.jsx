@@ -67,6 +67,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 400, height: 566 });
+  const [isMobile, setIsMobile] = useState(false);
   
   const flipBookRef = useRef(null);
   const containerRef = useRef(null);
@@ -106,12 +107,18 @@ export default function PageFlipBook({ pdfUrl, title }) {
     }
   }, []);
 
-  // Calculate dimensions based on container
+  // Calculate dimensions based on container and detect mobile
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
         const containerWidth = containerRef.current.clientWidth;
-        const maxWidth = Math.min(containerWidth * 0.45, 450); // Each page max 450px
+        const mobile = containerWidth < 768;
+        setIsMobile(mobile);
+        
+        // On mobile: single page, larger. On desktop: two pages side by side
+        const maxWidth = mobile 
+          ? Math.min(containerWidth * 0.9, 400) 
+          : Math.min(containerWidth * 0.45, 450);
         const height = maxWidth * 1.414; // A4 ratio
         setDimensions({ width: maxWidth, height });
       }
@@ -313,7 +320,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
             startPage={0}
             drawShadow={true}
             flippingTime={600}
-            usePortrait={false}
+            usePortrait={isMobile}
             startZIndex={0}
             autoSize={true}
             maxShadowOpacity={0.5}

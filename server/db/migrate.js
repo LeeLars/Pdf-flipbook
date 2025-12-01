@@ -34,12 +34,24 @@ const migrate = async () => {
         page_count INTEGER DEFAULT 0,
         file_size BIGINT DEFAULT 0,
         is_published BOOLEAN DEFAULT true,
+        sort_order INTEGER DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         published_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
     console.log('✅ Magazines tabel aangemaakt');
+    
+    // Add sort_order column if it doesn't exist (for existing databases)
+    await query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                       WHERE table_name='magazines' AND column_name='sort_order') THEN
+          ALTER TABLE magazines ADD COLUMN sort_order INTEGER DEFAULT 0;
+        END IF;
+      END $$;
+    `);
 
     // Create index for faster queries
     await query(`

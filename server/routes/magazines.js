@@ -37,10 +37,10 @@ router.get('/', async (req, res) => {
 
     const result = await query(
       `SELECT id, client_slug, title, pdf_url, cover_url, page_count, 
-              file_size, created_at, published_at
+              file_size, sort_order, created_at, published_at
        FROM magazines 
        WHERE client_slug = $1 AND is_published = true
-       ORDER BY created_at DESC
+       ORDER BY sort_order ASC, created_at DESC
        LIMIT $2 OFFSET $3`,
       [client, parseInt(limit), parseInt(offset)]
     );
@@ -321,6 +321,33 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 /**
+ * PATCH /api/magazines/reorder
+ * Reorder magazines (protected)
+ */
+router.patch('/reorder', authMiddleware, async (req, res) => {
+  try {
+    const { order } = req.body;
+
+    if (!order || !Array.isArray(order)) {
+      return res.status(400).json({ error: 'Order array is verplicht' });
+    }
+
+    // Update sort_order for each magazine
+    for (const item of order) {
+      await query(
+        'UPDATE magazines SET sort_order = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [item.sort_order, item.id]
+      );
+    }
+
+    res.json({ success: true, message: 'Volgorde bijgewerkt' });
+  } catch (error) {
+    console.error('Reorder magazines error:', error);
+    res.status(500).json({ error: 'Er is een fout opgetreden' });
+  }
+});
+
+/**
  * GET /api/magazines/admin/all
  * Get all magazines including unpublished (protected)
  */
@@ -340,7 +367,7 @@ router.get('/admin/all', authMiddleware, async (req, res) => {
       values.push(client);
     }
 
-    queryText += ' ORDER BY created_at DESC';
+    queryText += ' ORDER BY sort_order ASC, created_at DESC';
 
     const result = await query(queryText, values);
 
