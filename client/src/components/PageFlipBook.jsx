@@ -290,14 +290,21 @@ export default function PageFlipBook({ pdfUrl, title }) {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              const link = document.createElement('a');
-              link.href = pdfUrl;
-              link.download = `${title}.pdf`;
-              link.target = '_blank';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
+            onClick={async () => {
+              try {
+                const response = await fetch(pdfUrl);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${title}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+              } catch (error) {
+                window.open(pdfUrl, '_blank');
+              }
             }}
             className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             title="Download PDF"
@@ -314,8 +321,17 @@ export default function PageFlipBook({ pdfUrl, title }) {
         </div>
       </div>
 
-      {/* Flipbook */}
-      <div className={`flex items-center justify-center py-8 ${isFullscreen ? 'h-[calc(100vh-60px)]' : 'min-h-[500px]'}`}>
+      {/* Flipbook with side navigation */}
+      <div className={`flex items-center justify-center py-4 gap-2 md:gap-4 ${isFullscreen ? 'h-[calc(100vh-60px)]' : 'min-h-[400px] md:min-h-[500px]'}`}>
+        {/* Left navigation arrow */}
+        <button
+          onClick={goToPrevPage}
+          disabled={currentPage <= 0}
+          className="hidden md:flex p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft className="w-6 h-6 text-gray-700" />
+        </button>
+
         {pdf && totalPages > 0 && (
           <div className="relative" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0,0,0,0.05)' }}>
           <HTMLFlipBook
@@ -323,11 +339,11 @@ export default function PageFlipBook({ pdfUrl, title }) {
             width={dimensions.width}
             height={dimensions.height}
             size="fixed"
-            minWidth={280}
+            minWidth={200}
             maxWidth={500}
-            minHeight={400}
+            minHeight={280}
             maxHeight={700}
-            showCover={true}
+            showCover={false}
             mobileScrollSupport={true}
             onFlip={onFlip}
             className=""
@@ -354,12 +370,41 @@ export default function PageFlipBook({ pdfUrl, title }) {
           </HTMLFlipBook>
           </div>
         )}
+
+        {/* Right navigation arrow */}
+        <button
+          onClick={goToNextPage}
+          disabled={currentPage >= totalPages - (isMobile ? 1 : 2)}
+          className="hidden md:flex p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronRight className="w-6 h-6 text-gray-700" />
+        </button>
       </div>
 
+      {/* Mobile navigation buttons */}
+      {isMobile && (
+        <div className="flex justify-center gap-4 py-2">
+          <button
+            onClick={goToPrevPage}
+            disabled={currentPage <= 0}
+            className="p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30"
+          >
+            <ChevronLeft className="w-6 h-6 text-gray-700" />
+          </button>
+          <button
+            onClick={goToNextPage}
+            disabled={currentPage >= totalPages - 1}
+            className="p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30"
+          >
+            <ChevronRight className="w-6 h-6 text-gray-700" />
+          </button>
+        </div>
+      )}
+
       {/* Navigation hint */}
-      <div className="text-center py-2 bg-white/80 backdrop-blur border-t">
+      <div className="text-center py-1 bg-white/80 backdrop-blur border-t">
         <p className="text-xs text-gray-400">
-          Klik op de hoek of gebruik ← → om te bladeren
+          {isMobile ? 'Swipe of gebruik de pijlen' : 'Klik op de hoek of gebruik ← → om te bladeren'}
         </p>
       </div>
     </div>

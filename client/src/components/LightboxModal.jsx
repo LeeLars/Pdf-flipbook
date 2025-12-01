@@ -4,36 +4,61 @@ import PageFlipBook from './PageFlipBook';
 export default function LightboxModal({ magazine, onClose }) {
   if (!magazine) return null;
 
-  // Direct flipbook view - no preview step
-  return (
-    <div className="fixed inset-0 z-50 bg-gray-900">
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/50 to-transparent">
-        <h2 className="text-white font-medium truncate pr-4">{magazine.title}</h2>
-        <div className="flex items-center gap-2">
-          <a
-            href={magazine.pdf_url}
-            download={magazine.title}
-            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-            title="Download PDF"
-          >
-            <Download className="w-5 h-5 text-white" />
-          </a>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-          >
-            <X className="w-6 h-6 text-white" />
-          </button>
-        </div>
-      </div>
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(magazine.pdf_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${magazine.title}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      window.open(magazine.pdf_url, '_blank');
+    }
+  };
 
-      {/* Flipbook - direct view */}
-      <div className="h-full pt-16 pb-4 px-4 overflow-auto">
-        <PageFlipBook 
-          pdfUrl={magazine.pdf_url} 
-          title={magazine.title}
-        />
+  // Popup style with transparent background
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div 
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b bg-gray-50">
+          <h2 className="font-medium text-gray-900 truncate pr-4">{magazine.title}</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownload}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Download PDF"
+            >
+              <Download className="w-5 h-5 text-gray-600" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
+
+        {/* Flipbook */}
+        <div className="p-4 overflow-auto max-h-[calc(90vh-60px)]">
+          <PageFlipBook 
+            pdfUrl={magazine.pdf_url} 
+            title={magazine.title}
+          />
+        </div>
       </div>
     </div>
   );

@@ -152,7 +152,7 @@ export default function MagazineViewer({ clientSlug }) {
         )}
 
         {/* Subtle Admin Button - at bottom of content */}
-        <div className="flex justify-end mt-12 pb-4">
+        <div className="flex justify-end mt-4 pb-2">
           <button
             onClick={handleAdminClick}
             className="admin-trigger p-2 rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
