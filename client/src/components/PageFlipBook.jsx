@@ -42,6 +42,8 @@ const PDF_OPTIONS = {
   disableAutoFetch: false,
 };
 
+const PAGE_RATIO = 1.414; // A4 height/width ratio
+
 // --- Components ---
 
 // Thumbnail Component
@@ -186,7 +188,7 @@ Page.displayName = 'Page';
 
 // --- Main Component ---
 
-export default function PageFlipBook({ pdfUrl, title }) {
+export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const [pdf, setPdf] = useState(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -200,10 +202,26 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState({ width: 400, height: 566 });
   const [isMobile, setIsMobile] = useState(false);
-  
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const isModal = variant === 'modal';
+
   const flipBookRef = useRef(null);
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffer: null });
+
+  // Observe container size for smoother responsive scaling
+  useEffect(() => {
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        setContainerSize({ width, height });
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // --- Audio Setup (Newspaper Foley style flip sound) ---
   useEffect(() => {
@@ -305,39 +323,32 @@ export default function PageFlipBook({ pdfUrl, title }) {
 
   // --- Dimensions & Responsive ---
   const updateDimensions = useCallback(() => {
-    if (!containerRef.current) return;
+    if (typeof window === 'undefined') return;
 
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     const mobile = screenWidth < 768;
     setIsMobile(mobile);
-    
-    // Adjust dimensions based on available space
-    // If fullscreen, we take almost everything. If not, we take container width/height
-    const containerW = containerRef.current.clientWidth;
-    // We subtract some space for the toolbar (bottom) and padding
-    const availableH = isFullscreen ? screenHeight - 100 : Math.min(screenHeight * 0.8, 800);
-    const availableW = isFullscreen ? screenWidth - 40 : containerW;
+
+    const baseWidth = containerSize.width || screenWidth;
+    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.85 : screenHeight * 0.75);
+
+    const horizontalPadding = mobile ? 24 : (isFullscreen ? 80 : (isModal ? 60 : 140));
+    const verticalPadding = mobile ? 140 : (isFullscreen ? 140 : (isModal ? 150 : 200));
+
+    const availableW = Math.max((isFullscreen ? screenWidth : baseWidth) - horizontalPadding, 260);
+    const availableH = Math.max((isFullscreen ? screenHeight : baseHeight) - verticalPadding, 340);
 
     if (mobile) {
-      // Mobile: Single page
-      const pageWidth = Math.min(availableW * 0.95, 500);
-      const pageHeight = Math.min(pageWidth * 1.414, availableH);
-      // Recalculate width from height to maintain aspect ratio if height is the limiting factor
-      const finalWidth = Math.min(pageWidth, pageHeight / 1.414);
-      setDimensions({ width: finalWidth, height: finalWidth * 1.414 });
+      const width = Math.min(availableW, availableH / PAGE_RATIO);
+      setDimensions({ width, height: width * PAGE_RATIO });
     } else {
-      // Desktop: Double page
-      // Max width for one page
-      const maxPageW = (availableW - 80) / 2;
-      const maxPageH = availableH;
-      
-      let w = Math.min(maxPageW, maxPageH / 1.414);
-      let h = w * 1.414;
-      
-      setDimensions({ width: w, height: h });
+      const spreadWidth = availableW;
+      const pageWidth = Math.min(spreadWidth / 2, availableH / PAGE_RATIO);
+      const pageHeight = pageWidth * PAGE_RATIO;
+      setDimensions({ width: pageWidth, height: pageHeight });
     }
-  }, [isFullscreen]);
+  }, [containerSize, isFullscreen, isModal]);
 
   useEffect(() => {
     updateDimensions();
@@ -417,8 +428,12 @@ export default function PageFlipBook({ pdfUrl, title }) {
   return (
     <div 
       ref={containerRef}
-      className={`relative flex flex-col items-center bg-gray-100 transition-all duration-300 ${
-        isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen justify-center' : 'rounded-xl min-h-[600px] justify-center py-8'
+      className={`relative flex flex-col items-center bg-gray-100 transition-all duration-300 w-full ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 h-screen w-screen justify-center'
+          : isModal
+            ? 'rounded-2xl min-h-[500px] justify-center py-6'
+            : 'rounded-xl min-h-[620px] justify-center py-10'
       }`}
     >
       {/* Top Controls (Title & Close Grid) */}
@@ -439,7 +454,7 @@ export default function PageFlipBook({ pdfUrl, title }) {
 
       {/* Main Content Area */}
       <div className={`relative transition-transform duration-300 ease-out flex items-center justify-center ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
-           style={{ transform: `scale(${zoom})` }}
+           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
       >
         {/* Left Arrow */}
         {!isMobile && (

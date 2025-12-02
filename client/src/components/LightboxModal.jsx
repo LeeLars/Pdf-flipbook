@@ -30,6 +30,7 @@ export default function LightboxModal({ magazine, onClose }) {
           <PageFlipBook 
             pdfUrl={magazine.pdf_url} 
             title={magazine.title}
+            variant="modal"
           />
         </div>
       </div>
