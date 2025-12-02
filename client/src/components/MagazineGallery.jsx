@@ -87,43 +87,53 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 }
 
 function MagazineCard({ magazine, onClick }) {
-  const cardRef = useRef(null);
-  const canvasRef = useRef(null);
-  const [imageError, setImageError] = useState(false);
-  const [coverReady, setCoverReady] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [coverUrl, setCoverUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  // Always try to generate cover from PDF when image fails or doesn't exist
   useEffect(() => {
-    // If we have a working cover_url, don't generate
-    if (magazine.cover_url && !imageError) return;
-    
-    // If no PDF url, can't generate
-    if (!magazine.pdf_url) {
-      setLoadError(true);
-      return;
-    }
+    let cancelled = false;
 
-    // Check cache first
-    const cacheKey = magazine.id || magazine.pdf_url;
-    if (coverCache.has(cacheKey)) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
+    const loadCover = async () => {
+      // First try the cover_url from the database
+      if (magazine.cover_url) {
+        // Test if the image loads
         const img = new Image();
         img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.drawImage(img, 0, 0);
-          setCoverReady(true);
+          if (!cancelled) {
+            setCoverUrl(magazine.cover_url);
+            setLoading(false);
+          }
         };
-        img.src = coverCache.get(cacheKey);
+        img.onerror = () => {
+          // Cover URL failed, generate from PDF
+          if (!cancelled) generateFromPdf();
+        };
+        img.src = magazine.cover_url;
+        return;
       }
-      return;
-    }
+      
+      // No cover_url, generate from PDF
+      generateFromPdf();
+    };
 
-    // Generate cover from PDF
-    const generateCover = async () => {
+    const generateFromPdf = async () => {
+      if (!magazine.pdf_url) {
+        setError(true);
+        setLoading(false);
+        return;
+      }
+
+      // Check cache
+      const cacheKey = magazine.id || magazine.pdf_url;
+      if (coverCache.has(cacheKey)) {
+        if (!cancelled) {
+          setCoverUrl(coverCache.get(cacheKey));
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         const loadingTask = pdfjsLib.getDocument({
           url: magazine.pdf_url,
@@ -132,16 +142,17 @@ function MagazineCard({ magazine, onClick }) {
         });
         
         const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        
         const page = await pdf.getPage(1);
-
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (cancelled) return;
 
         const viewport = page.getViewport({ scale: 1 });
-        const targetWidth = 400;
+        const targetWidth = 350;
         const scale = targetWidth / viewport.width;
         const scaledViewport = page.getViewport({ scale });
 
+        const canvas = document.createElement('canvas');
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
         const context = canvas.getContext('2d');
@@ -154,74 +165,58 @@ function MagazineCard({ magazine, onClick }) {
           viewport: scaledViewport,
         }).promise;
 
-        // Cache the result
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        if (cancelled) return;
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         coverCache.set(cacheKey, dataUrl);
-        setCoverReady(true);
+        setCoverUrl(dataUrl);
+        setLoading(false);
       } catch (err) {
-        console.error('Error generating cover for', magazine.title, err);
-        setLoadError(true);
+        console.error('Cover generation failed:', magazine.title);
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
       }
     };
 
-    generateCover();
-  }, [magazine.pdf_url, magazine.cover_url, magazine.id, magazine.title, imageError]);
+    loadCover();
 
-  // Determine what to show
-  const showCoverImage = magazine.cover_url && !imageError;
-  const showCanvas = !showCoverImage && !loadError;
-  const showFallback = loadError && !showCoverImage;
+    return () => { cancelled = true; };
+  }, [magazine.id, magazine.pdf_url, magazine.cover_url, magazine.title]);
 
   return (
     <button
-      ref={cardRef}
       onClick={onClick}
       className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
       {/* Cover */}
-      <div className="aspect-[3/4] bg-gray-100 relative overflow-hidden">
-        {/* Try cover_url first */}
-        {showCoverImage && (
+      <div className="aspect-[3/4] bg-gray-50 relative overflow-hidden">
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="w-8 h-8 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+          </div>
+        )}
+        
+        {coverUrl && (
           <img
-            src={magazine.cover_url}
+            src={coverUrl}
             alt={magazine.title}
-            onError={() => setImageError(true)}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
           />
         )}
 
-        {/* Canvas for PDF-generated cover */}
-        {showCanvas && (
-          <>
-            <canvas 
-              ref={canvasRef}
-              className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${coverReady ? 'opacity-100' : 'opacity-0'}`}
-            />
-            {!coverReady && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
-                <span className="text-xs text-gray-400">Laden...</span>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Fallback icon when everything fails */}
-        {showFallback && (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-            <div className="text-center">
-              <svg className="w-12 h-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span className="text-xs text-gray-400">Magazine</span>
-            </div>
+        {error && !coverUrl && (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+            <svg className="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
           </div>
         )}
         
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-gray-800 shadow-sm transform translate-y-2 group-hover:translate-y-0 transition-transform">
+          <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-gray-800 shadow-sm">
             Lezen
           </span>
         </div>

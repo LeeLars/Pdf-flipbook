@@ -187,43 +187,67 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffer: null });
 
-  // --- Audio Setup (Synthesized paper flip sound) ---
+  // --- Audio Setup (Newspaper Foley style flip sound) ---
   useEffect(() => {
     let audioContext;
 
-    const createFlipBuffer = (ctx) => {
-      // Realistic paper flip sound - "fwip" + "ritsel"
-      const duration = 0.32;
-      const bufferSize = ctx.sampleRate * duration;
-      const buffer = ctx.createBuffer(2, bufferSize, ctx.sampleRate);
+    const createNewspaperFlipSound = (ctx) => {
+      // Newspaper Foley 4 style - crisp paper flip
+      const duration = 0.4;
+      const sampleRate = ctx.sampleRate;
+      const bufferSize = sampleRate * duration;
+      const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
 
       for (let channel = 0; channel < 2; channel++) {
         const data = buffer.getChannelData(channel);
+        
         for (let i = 0; i < bufferSize; i++) {
           const t = i / bufferSize;
           
-          // Envelope: quick attack, smooth decay
-          const attack = Math.min(t * 12, 1);
-          const decay = Math.pow(1 - t, 2);
-          const envelope = attack * decay;
+          // Multi-stage envelope like real paper
+          let envelope;
+          if (t < 0.05) {
+            // Quick attack - paper starts moving
+            envelope = t / 0.05;
+          } else if (t < 0.15) {
+            // Peak rustle
+            envelope = 1.0;
+          } else if (t < 0.35) {
+            // Main flip sound
+            envelope = 1.0 - (t - 0.15) * 1.5;
+          } else {
+            // Soft landing
+            envelope = Math.max(0, 0.7 - (t - 0.35) * 2);
+          }
           
-          // Paper rustle (filtered noise)
-          const noise = (Math.random() * 2 - 1);
+          // Crisp high-frequency rustle (newspaper texture)
+          const rustle = (Math.random() * 2 - 1) * 0.7;
           
-          // Whoosh sweep from high to low
-          const freq = 300 - t * 250;
-          const whoosh = Math.sin((i / ctx.sampleRate) * freq * Math.PI * 2) * 0.3;
+          // Filtered mid-frequency body
+          const bodyFreq = 180 + Math.sin(t * 20) * 50;
+          const body = Math.sin((i / sampleRate) * bodyFreq * Math.PI * 2) * 0.15;
           
-          // Soft thump at the end (page landing)
-          const thumpTime = 0.7;
-          const thump = t > thumpTime 
-            ? Math.sin((t - thumpTime) * 400) * Math.exp(-(t - thumpTime) * 25) * 0.4 
-            : 0;
+          // Whoosh - air movement
+          const whooshFreq = 400 - t * 350;
+          const whoosh = Math.sin((i / sampleRate) * whooshFreq * Math.PI * 2) * 0.2 * (1 - t);
           
-          // Stereo variation
-          const stereo = channel === 0 ? 1.02 : 0.98;
+          // Paper crinkle - random high freq bursts
+          const crinkle = (Math.random() > 0.92) ? (Math.random() - 0.5) * 0.5 : 0;
           
-          data[i] = ((noise * 0.5 + whoosh + thump) * envelope * 0.6) * stereo;
+          // Thump when page lands (around t=0.3)
+          const thumpCenter = 0.32;
+          const thumpWidth = 0.08;
+          const thumpEnv = Math.exp(-Math.pow((t - thumpCenter) / thumpWidth, 2));
+          const thump = Math.sin((t - thumpCenter) * 300) * thumpEnv * 0.3;
+          
+          // Stereo spread
+          const pan = channel === 0 ? 0.9 : 1.1;
+          
+          // Combine all elements
+          const sample = (rustle * 0.4 + body + whoosh + crinkle + thump) * envelope * pan;
+          
+          // Soft clip for warmth
+          data[i] = Math.tanh(sample * 1.5) * 0.7;
         }
       }
       return buffer;
@@ -233,10 +257,8 @@ export default function PageFlipBook({ pdfUrl, title }) {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffer = createFlipBuffer(audioContext);
-      } catch (e) {
-        // Audio not supported
-      }
+        audioRef.current.buffer = createNewspaperFlipSound(audioContext);
+      } catch (e) {}
     };
 
     initAudio();
@@ -433,13 +455,15 @@ export default function PageFlipBook({ pdfUrl, title }) {
             style={{ margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
-            flippingTime={600}
+            flippingTime={800}
             usePortrait={isMobile}
             startZIndex={0}
             autoSize={false}
-            maxShadowOpacity={0.4}
-            showPageCorners={!isMobile}
+            maxShadowOpacity={0.5}
+            showPageCorners={true}
             disableFlipByClick={false}
+            clickEventForward={true}
+            swipeDistance={30}
           >
             {Array.from({ length: totalPages }, (_, i) => (
               <Page
