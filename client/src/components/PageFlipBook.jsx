@@ -96,7 +96,7 @@ const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
 };
 
 // Page Component (High Res) - with render task cancellation to prevent canvas conflicts
-const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
+const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const [rendered, setRendered] = useState(false);
@@ -175,8 +175,8 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
   return (
     <div
       ref={ref}
-      className={`page relative ${isCover ? 'page-cover' : ''}`}
-      data-density={isCover ? 'hard' : 'soft'}
+      className="page relative"
+      data-density="soft"
       style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}
     >
       <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
@@ -212,7 +212,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   const flipBookRef = useRef(null);
   const containerRef = useRef(null);
-  const audioRef = useRef({ audioContext: null, buffer: null });
+  const audioRef = useRef({ audioContext: null, buffers: [] });
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -228,63 +228,65 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     return () => observer.disconnect();
   }, []);
 
-  // --- Audio Setup (Newspaper Foley style flip sound) ---
+  // --- Audio Setup (Realistic paper turn) ---
   useEffect(() => {
     let audioContext;
 
-    const createChaoticFlipBuffers = (ctx, variations = 4) => {
-      const buffers = [];
-      for (let v = 0; v < variations; v++) {
-        const duration = 0.55 + Math.random() * 0.35;
+    const createPaperFlipVariants = (ctx, count = 4) => {
+      const variants = [];
+      for (let c = 0; c < count; c++) {
+        const duration = 0.7 + Math.random() * 0.2;
         const sampleRate = ctx.sampleRate;
         const bufferSize = Math.floor(sampleRate * duration);
         const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
 
-        const flutterFreq = 40 + Math.random() * 160;
-        const snapCenter = 0.15 + Math.random() * 0.2;
-        const thumpCenter = 0.4 + Math.random() * 0.25;
-        const airyCenter = 0.25 + Math.random() * 0.25;
+        const liftStart = 0.04 + Math.random() * 0.03;
+        const flickCenter = 0.12 + Math.random() * 0.05;
+        const swooshCenter = 0.3 + Math.random() * 0.12;
+        const landingCenter = 0.55 + Math.random() * 0.08;
 
         for (let channel = 0; channel < 2; channel++) {
           const data = buffer.getChannelData(channel);
           let low = 0;
+          let mid = 0;
           let high = 0;
 
           for (let i = 0; i < bufferSize; i++) {
             const t = i / bufferSize;
-            const noise = (Math.random() * 2 - 1);
+            const raw = Math.random() * 2 - 1;
 
-            low += (noise - low) * 0.05;
-            high += (noise - high) * 0.35;
+            low += (raw - low) * 0.02;
+            mid += (raw - mid) * 0.08;
+            high += (raw - high) * 0.25;
 
-            const flutter = Math.sin((i / sampleRate) * flutterFreq * Math.PI * 2) * 0.3;
-            const airy = (high - low) * Math.exp(-Math.pow((t - airyCenter) / 0.18, 2)) * 0.6;
-            const snap = Math.exp(-Math.pow((t - snapCenter) / 0.035, 2)) * (Math.random() * 0.8 - 0.4);
-            const thump = Math.exp(-Math.pow((t - thumpCenter) / 0.1, 2)) * Math.sin(t * Math.PI * (60 + Math.random() * 60)) * 0.35;
+            const lift = Math.min(Math.max((t - liftStart) / 0.25, 0), 1);
+            const release = 1 - Math.min(Math.max((t - 0.55) / 0.35, 0), 1);
+            const envelope = Math.pow(Math.max(lift * release, 0), 0.95);
 
-            const microClicks = (Math.random() > 0.995 ? (Math.random() * 0.8 - 0.4) : 0);
+            const flick = Math.exp(-Math.pow((t - flickCenter) / 0.025, 2)) * (0.6 + Math.random() * 0.2);
+            const fibers = (high - mid) * 0.45;
+            const swoosh = (mid - low) * Math.exp(-Math.pow((t - swooshCenter) / 0.18, 2)) * 0.9;
+            const landing = Math.exp(-Math.pow((t - landingCenter) / 0.07, 2)) * Math.sin(t * Math.PI * (80 + Math.random() * 20)) * 0.35;
+            const rustle = low * 0.25;
+            const tinyTear = Math.random() > 0.998 ? (Math.random() * 0.5 - 0.25) : 0;
 
-            const attack = Math.min(t / (0.08 + Math.random() * 0.05), 1);
-            const release = 1 - Math.min(Math.max((t - 0.45) / 0.35, 0), 1);
-            const envelope = Math.pow(Math.max(attack * release, 0), 1.2);
-
-            const pan = channel === 0 ? 0.9 + Math.random() * 0.05 : 1.0 - Math.random() * 0.05;
-            const sample = (low * 0.15 + airy + flutter + snap + thump + microClicks) * envelope;
-            data[i] = Math.tanh(sample * 1.35) * pan;
+            const pan = channel === 0 ? 0.92 : 1.02;
+            const sample = (rustle + fibers + swoosh + flick + landing + tinyTear) * envelope;
+            data[i] = Math.tanh(sample * 1.15) * pan;
           }
         }
 
-        buffers.push(buffer);
+        variants.push(buffer);
       }
 
-      return buffers;
+      return variants;
     };
 
     const initAudio = () => {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffers = createChaoticFlipBuffers(audioContext);
+        audioRef.current.buffers = createPaperFlipVariants(audioContext);
       } catch (e) {}
     };
 
@@ -305,7 +307,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       const source = audioContext.createBufferSource();
       source.buffer = buffers[Math.floor(Math.random() * buffers.length)];
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.32;
+      gainNode.gain.value = 0.27;
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
       source.start(0);
@@ -469,7 +471,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
             maxWidth={1000}
             minHeight={280}
             maxHeight={1400}
-            showCover={true}
+            showCover={false}
             mobileScrollSupport={true}
             onFlip={(e) => {
               setCurrentPage(e.data);
@@ -497,7 +499,6 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
                 width={dimensions.width}
                 height={dimensions.height}
                 zoomLevel={zoom}
-                isCover={i === 0 || i === totalPages - 1}
               />
             ))}
           </HTMLFlipBook>
