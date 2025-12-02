@@ -222,10 +222,20 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     };
   }, [dimensions.width, dimensions.height, isMobile]);
 
+  const stageTransform = useMemo(() => {
+    if (isMobile) return 'translateX(0px)';
+    if (currentPage === 0) {
+      return `translateX(-${dimensions.width / 2}px)`;
+    }
+    return 'translateX(0px)';
+  }, [isMobile, currentPage, dimensions.width]);
+
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
-    height: `${stageDimensions.height}px`
-  }), [stageDimensions]);
+    height: `${stageDimensions.height}px`,
+    transform: stageTransform,
+    transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+  }), [stageDimensions, stageTransform]);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -399,7 +409,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
       {/* Main Content Area */}
       <div className={`relative transition-transform duration-300 ease-out flex items-center justify-center ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
-           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
+           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center', width: '100%' }}
       >
         {/* Left Arrow */}
         {!isMobile && (
