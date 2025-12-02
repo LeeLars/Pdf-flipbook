@@ -1,9 +1,12 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Filter } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// Simple in-memory cache per session so we don't re-render the same PDF covers repeatedly
+const coverCache = new Map();
 
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
@@ -84,53 +87,92 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 }
 
 function MagazineCard({ magazine, onClick }) {
-  const canvasRef = useRef(null);
-  const [coverGenerated, setCoverGenerated] = useState(false);
+  const cardRef = useRef(null);
   const [imageError, setImageError] = useState(false);
+  const [coverGenerated, setCoverGenerated] = useState(false);
+  const [coverDataUrl, setCoverDataUrl] = useState(null);
+  const [isInView, setIsInView] = useState(false);
+  const [loadingCover, setLoadingCover] = useState(false);
 
-  // Generate cover from PDF if no cover_url exists OR if loading failed
+  // Observe when the card enters the viewport so we only render PDFs when needed
   useEffect(() => {
-    // If we have a URL and it hasn't failed yet, don't generate
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: '250px' }
+    );
+
+    if (cardRef.current) {
+      observer.observe(cardRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  const generateCover = useCallback(async () => {
+    if (!magazine.pdf_url || loadingCover || coverGenerated) return;
+
+    const cacheKey = magazine.id || magazine.pdf_url;
+    if (coverCache.has(cacheKey)) {
+      setCoverDataUrl(coverCache.get(cacheKey));
+      setCoverGenerated(true);
+      return;
+    }
+
+    try {
+      setLoadingCover(true);
+      const loadingTask = pdfjsLib.getDocument({ url: magazine.pdf_url, withCredentials: false });
+      const pdf = await loadingTask.promise;
+      const page = await pdf.getPage(1);
+
+      const viewport = page.getViewport({ scale: 1 });
+      const targetWidth = 450; // px for better clarity on retina displays
+      const scale = targetWidth / viewport.width;
+      const scaledViewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledViewport.width;
+      canvas.height = scaledViewport.height;
+      const context = canvas.getContext('2d');
+
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      await page.render({
+        canvasContext: context,
+        viewport: scaledViewport,
+        renderInteractiveForms: false
+      }).promise;
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      coverCache.set(cacheKey, dataUrl);
+      setCoverDataUrl(dataUrl);
+      setCoverGenerated(true);
+    } catch (err) {
+      console.error('Error generating cover:', err);
+    } finally {
+      setLoadingCover(false);
+    }
+  }, [magazine.pdf_url, loadingCover, coverGenerated, magazine.id]);
+
+  // Trigger cover generation when needed
+  useEffect(() => {
+    if (!isInView) return;
     if (magazine.cover_url && !imageError) return;
-    
-    if (!magazine.pdf_url || coverGenerated) return;
-
-    const generateCover = async () => {
-      try {
-        const loadingTask = pdfjsLib.getDocument(magazine.pdf_url);
-        const pdf = await loadingTask.promise;
-        const page = await pdf.getPage(1);
-        
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        const context = canvas.getContext('2d');
-        const viewport = page.getViewport({ scale: 1 });
-        
-        // Scale to fit nicely - High Quality
-        // We want a width of about 300px-400px for thumbnails
-        const scale = 400 / viewport.width;
-        const scaledViewport = page.getViewport({ scale });
-        
-        canvas.width = scaledViewport.width;
-        canvas.height = scaledViewport.height;
-        
-        await page.render({
-          canvasContext: context,
-          viewport: scaledViewport
-        }).promise;
-        
-        setCoverGenerated(true);
-      } catch (err) {
-        console.error('Error generating cover:', err);
-      }
-    };
-
     generateCover();
-  }, [magazine.pdf_url, magazine.cover_url, coverGenerated, imageError]);
+  }, [isInView, magazine.cover_url, imageError, generateCover]);
+
+  const showGeneratedCover = (!magazine.cover_url || imageError) && coverGenerated && coverDataUrl;
 
   return (
     <button
+      ref={cardRef}
       onClick={onClick}
       className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
@@ -144,17 +186,17 @@ function MagazineCard({ magazine, onClick }) {
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
           />
+        ) : showGeneratedCover ? (
+          <img
+            src={coverDataUrl}
+            alt={magazine.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
         ) : (
-          <div className="w-full h-full relative">
-             {!coverGenerated && (
-               <div className="absolute inset-0 flex items-center justify-center text-gray-300">
-                 <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-               </div>
-             )}
-             <canvas 
-               ref={canvasRef}
-               className={`w-full h-full object-cover transition-opacity duration-300 ${coverGenerated ? 'opacity-100' : 'opacity-0'}`}
-             />
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-300">
+            <div className="w-10 h-10 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
+            <span className="text-xs text-gray-400">Cover laden...</span>
           </div>
         )}
         

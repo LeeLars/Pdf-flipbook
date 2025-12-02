@@ -18,6 +18,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
+// Premium flip sound sample (Pixabay - "Newspaper Foley 4")
+const FLIP_SAMPLE_URL = 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_9ff19fec20.mp3?filename=newspaper-foley-4-153637.mp3';
+
 // --- Components ---
 
 // Thumbnail Component
@@ -158,67 +161,78 @@ export default function PageFlipBook({ pdfUrl, title }) {
   
   const flipBookRef = useRef(null);
   const containerRef = useRef(null);
-  const audioRef = useRef(null);
+  const audioRef = useRef({ audioContext: null, sampleBuffer: null, fallbackBuffer: null });
 
-  // --- Audio Setup ---
+  // --- Audio Setup (Newspaper Foley sample with synthesized fallback) ---
   useEffect(() => {
-    const createFlipSound = () => {
-      try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        // Shorter, crisper sound (approx 0.3s)
-        const duration = 0.3;
-        const bufferSize = audioContext.sampleRate * duration;
-        const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate);
-        
-        for (let channel = 0; channel < 2; channel++) {
-          const data = buffer.getChannelData(channel);
-          for (let i = 0; i < bufferSize; i++) {
-            const t = i / bufferSize;
-            
-            // "Fwip" envelope: Fast attack, quick decay
-            // Peak at t=0.1
-            let envelope = 0;
-            if (t < 0.1) {
-                envelope = t / 0.1; // Rise
-            } else {
-                envelope = Math.pow(1 - ((t - 0.1) / 0.9), 3); // Decay
-            }
+    let audioContext;
 
-            // High frequency noise for "Ritsel" (Rustle)
-            const whiteNoise = Math.random() * 2 - 1;
-            
-            // "Whoosh" low frequency sweep
-            // From 400Hz down to 100Hz
-            const freq = 400 - t * 300;
-            const sine = Math.sin(i / audioContext.sampleRate * freq * Math.PI * 2);
-            
-            // Combine: mostly noise for texture, some sine for body
-            const signal = (whiteNoise * 0.8 + sine * 0.2);
-            
-            data[i] = signal * envelope * 0.5; // Scale volume
-          }
+    const createFallbackBuffer = (ctx) => {
+      // Synthetic "fwip" in case sample fails
+      const duration = 0.28;
+      const bufferSize = ctx.sampleRate * duration;
+      const buffer = ctx.createBuffer(2, bufferSize, ctx.sampleRate);
+
+      for (let channel = 0; channel < 2; channel++) {
+        const data = buffer.getChannelData(channel);
+        for (let i = 0; i < bufferSize; i++) {
+          const t = i / bufferSize;
+          const envelope = t < 0.08 ? t / 0.08 : Math.pow(1 - (t - 0.08) / 0.92, 3);
+          const whiteNoise = (Math.random() * 2 - 1) * 0.6;
+          const whooshFreq = 250 - t * 200;
+          const whoosh = Math.sin((i / ctx.sampleRate) * whooshFreq * Math.PI * 2) * 0.25;
+          data[i] = (whiteNoise + whoosh) * envelope * 0.5;
         }
-        return { audioContext, buffer };
-      } catch (e) {
-        return null;
+      }
+      return buffer;
+    };
+
+    const initAudio = async () => {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const fallbackBuffer = createFallbackBuffer(audioContext);
+        audioRef.current.audioContext = audioContext;
+        audioRef.current.fallbackBuffer = fallbackBuffer;
+
+        // Attempt to fetch "Newspaper Foley 4" sample
+        const response = await fetch(FLIP_SAMPLE_URL, { mode: 'cors' });
+        const arrayBuffer = await response.arrayBuffer();
+        const sampleBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        audioRef.current.sampleBuffer = sampleBuffer;
+      } catch (error) {
+        console.warn('Kon realistische flipsound niet laden, gebruik fallback.', error);
       }
     };
-    audioRef.current = createFlipSound();
+
+    initAudio();
+
+    return () => {
+      try {
+        audioContext?.close();
+      } catch (e) {
+        /* noop */
+      }
+    };
   }, []);
 
   const playFlipSound = useCallback(() => {
-    if (soundEnabled && audioRef.current) {
-      try {
-        const { audioContext, buffer } = audioRef.current;
-        if (audioContext.state === 'suspended') audioContext.resume();
-        const source = audioContext.createBufferSource();
-        const gainNode = audioContext.createGain();
-        source.buffer = buffer;
-        gainNode.gain.value = 0.5;
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        source.start(0);
-      } catch (e) {}
+    if (!soundEnabled) return;
+    const { audioContext, sampleBuffer, fallbackBuffer } = audioRef.current;
+    if (!audioContext) return;
+
+    try {
+      if (audioContext.state === 'suspended') audioContext.resume();
+      const source = audioContext.createBufferSource();
+      source.buffer = sampleBuffer || fallbackBuffer;
+      if (!source.buffer) return;
+
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = sampleBuffer ? 0.8 : 0.6;
+      source.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      source.start(0);
+    } catch (error) {
+      console.warn('Kon flipsound niet afspelen.', error);
     }
   }, [soundEnabled]);
 
