@@ -214,7 +214,18 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
-  const stageStyle = useMemo(() => ({}), []);
+  const stageDimensions = useMemo(() => {
+    const width = isMobile ? dimensions.width : dimensions.width * 2;
+    return {
+      width,
+      height: dimensions.height
+    };
+  }, [dimensions.width, dimensions.height, isMobile]);
+
+  const stageStyle = useMemo(() => ({
+    width: `${stageDimensions.width}px`,
+    height: `${stageDimensions.height}px`
+  }), [stageDimensions]);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -264,10 +275,10 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     setIsMobile(mobile);
 
     const baseWidth = containerSize.width || screenWidth;
-    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.85 : screenHeight * 0.75);
+    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.9 : screenHeight * 0.8);
 
-    const horizontalPadding = mobile ? 24 : (isFullscreen ? 80 : (isModal ? 60 : 140));
-    const verticalPadding = mobile ? 140 : (isFullscreen ? 140 : (isModal ? 150 : 200));
+    const horizontalPadding = mobile ? 16 : (isFullscreen ? 40 : (isModal ? 48 : 80));
+    const verticalPadding = mobile ? 100 : (isFullscreen ? 80 : (isModal ? 110 : 130));
 
     const availableW = Math.max((isFullscreen ? screenWidth : baseWidth) - horizontalPadding, 260);
     const availableH = Math.max((isFullscreen ? screenHeight : baseHeight) - verticalPadding, 340);
@@ -277,9 +288,10 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       setDimensions({ width, height: width * PAGE_RATIO });
     } else {
       const spreadWidth = availableW;
-      const pageWidth = Math.min(spreadWidth / 2, availableH / PAGE_RATIO);
-      const pageHeight = pageWidth * PAGE_RATIO;
-      setDimensions({ width: pageWidth, height: pageHeight });
+      const basePageWidth = Math.min(spreadWidth / 2, availableH / PAGE_RATIO);
+      const scaledPageWidth = Math.min(basePageWidth * 1.2, spreadWidth / 2);
+      const pageHeight = scaledPageWidth * PAGE_RATIO;
+      setDimensions({ width: scaledPageWidth, height: pageHeight });
     }
   }, [containerSize, isFullscreen, isModal]);
 
@@ -421,7 +433,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
               playFlipSound();
             }}
             className="flipbook"
-            style={{ margin: 0, padding: 0 }}
+            style={{ width: stageDimensions.width, height: stageDimensions.height, margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
             flippingTime={700}
