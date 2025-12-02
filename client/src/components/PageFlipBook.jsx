@@ -232,55 +232,59 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   useEffect(() => {
     let audioContext;
 
-    const createPaperFlipSound = (ctx) => {
-      const duration = 0.65;
-      const sampleRate = ctx.sampleRate;
-      const bufferSize = Math.floor(sampleRate * duration);
-      const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
+    const createChaoticFlipBuffers = (ctx, variations = 4) => {
+      const buffers = [];
+      for (let v = 0; v < variations; v++) {
+        const duration = 0.55 + Math.random() * 0.35;
+        const sampleRate = ctx.sampleRate;
+        const bufferSize = Math.floor(sampleRate * duration);
+        const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
 
-      for (let channel = 0; channel < 2; channel++) {
-        const data = buffer.getChannelData(channel);
-        let slow = 0;
-        let mid = 0;
+        const flutterFreq = 40 + Math.random() * 160;
+        const snapCenter = 0.15 + Math.random() * 0.2;
+        const thumpCenter = 0.4 + Math.random() * 0.25;
+        const airyCenter = 0.25 + Math.random() * 0.25;
 
-        for (let i = 0; i < bufferSize; i++) {
-          const t = i / bufferSize;
-          const noise = (Math.random() * 2 - 1);
+        for (let channel = 0; channel < 2; channel++) {
+          const data = buffer.getChannelData(channel);
+          let low = 0;
+          let high = 0;
 
-          // Build gentle filtered layers to mimic paper fibers
-          slow += (noise - slow) * 0.04; // bassy body
-          mid += (noise - mid) * 0.18;   // mid rustle
+          for (let i = 0; i < bufferSize; i++) {
+            const t = i / bufferSize;
+            const noise = (Math.random() * 2 - 1);
 
-          const rustleEnv = Math.exp(-Math.pow((t - 0.28) / 0.2, 2));
-          const swipeEnv = Math.exp(-Math.pow((t - 0.35) / 0.22, 2));
-          const snapEnv = Math.exp(-Math.pow((t - 0.18) / 0.05, 2));
-          const thumpEnv = Math.exp(-Math.pow((t - 0.58) / 0.08, 2));
+            low += (noise - low) * 0.05;
+            high += (noise - high) * 0.35;
 
-          const rustle = (noise - slow) * rustleEnv * 0.45;
-          const swipe = (mid - slow) * swipeEnv * 0.4;
-          const snap = snapEnv * (Math.random() * 0.6 - 0.3);
-          const thump = thumpEnv * Math.sin(t * Math.PI * 110) * 0.25;
+            const flutter = Math.sin((i / sampleRate) * flutterFreq * Math.PI * 2) * 0.3;
+            const airy = (high - low) * Math.exp(-Math.pow((t - airyCenter) / 0.18, 2)) * 0.6;
+            const snap = Math.exp(-Math.pow((t - snapCenter) / 0.035, 2)) * (Math.random() * 0.8 - 0.4);
+            const thump = Math.exp(-Math.pow((t - thumpCenter) / 0.1, 2)) * Math.sin(t * Math.PI * (60 + Math.random() * 60)) * 0.35;
 
-          const attack = Math.min(t / 0.12, 1);
-          const release = 1 - Math.min(Math.max((t - 0.42) / 0.4, 0), 1);
-          const envelope = Math.pow(Math.max(attack * release, 0), 1.1);
+            const microClicks = (Math.random() > 0.995 ? (Math.random() * 0.8 - 0.4) : 0);
 
-          const base = slow * 0.15;
-          const sample = (base + rustle + swipe + snap + thump) * envelope;
-          const pan = channel === 0 ? 0.92 : 1.0;
+            const attack = Math.min(t / (0.08 + Math.random() * 0.05), 1);
+            const release = 1 - Math.min(Math.max((t - 0.45) / 0.35, 0), 1);
+            const envelope = Math.pow(Math.max(attack * release, 0), 1.2);
 
-          data[i] = Math.tanh(sample * 1.25) * pan;
+            const pan = channel === 0 ? 0.9 + Math.random() * 0.05 : 1.0 - Math.random() * 0.05;
+            const sample = (low * 0.15 + airy + flutter + snap + thump + microClicks) * envelope;
+            data[i] = Math.tanh(sample * 1.35) * pan;
+          }
         }
+
+        buffers.push(buffer);
       }
 
-      return buffer;
+      return buffers;
     };
 
     const initAudio = () => {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffer = createPaperFlipSound(audioContext);
+        audioRef.current.buffers = createChaoticFlipBuffers(audioContext);
       } catch (e) {}
     };
 
@@ -293,15 +297,15 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   const playFlipSound = useCallback(() => {
     if (!soundEnabled) return;
-    const { audioContext, buffer } = audioRef.current;
-    if (!audioContext || !buffer) return;
+    const { audioContext, buffers } = audioRef.current;
+    if (!audioContext || !buffers?.length) return;
 
     try {
       if (audioContext.state === 'suspended') audioContext.resume();
       const source = audioContext.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = buffers[Math.floor(Math.random() * buffers.length)];
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.28;
+      gainNode.gain.value = 0.32;
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
       source.start(0);

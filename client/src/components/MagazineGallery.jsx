@@ -218,10 +218,7 @@ function MagazineCard({ magazine, onClick }) {
       className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
       {/* Cover */}
-      <div
-        className="bg-gray-50 relative overflow-hidden"
-        style={{ aspectRatio: '3 / 4' }}
-      >
+      <div className="bg-gray-50 relative overflow-hidden">
         {loading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <div className="w-8 h-8 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
