@@ -192,7 +192,7 @@ Je zou moeten zien:
 ### 6.1 Kopieer de iframe code
 ```html
 <iframe 
-  src="https://jouw-app.up.railway.app/vrije-tijd"
+  src="https://web-production-e48a7.up.railway.app/vrije-tijd"
   width="100%" 
   height="800" 
   frameborder="0"

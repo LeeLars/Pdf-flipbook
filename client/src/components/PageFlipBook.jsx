@@ -1,12 +1,86 @@
 import { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, Volume2, VolumeX } from 'lucide-react';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Maximize2, 
+  Minimize2, 
+  Download, 
+  Volume2, 
+  VolumeX,
+  ZoomIn,
+  ZoomOut,
+  Grid,
+  X
+} from 'lucide-react';
 import HTMLFlipBook from 'react-pageflip';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Page component for the flipbook - HIGH RESOLUTION
-const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
+// Set up the worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// --- Components ---
+
+// Thumbnail Component
+const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
+  const canvasRef = useRef(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!pdf || !canvasRef.current || loaded) return;
+
+    const renderThumb = async () => {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const canvas = canvasRef.current;
+        const context = canvas.getContext('2d');
+        
+        // Small scale for thumbnails
+        const viewport = page.getViewport({ scale: 0.3 });
+        
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({
+          canvasContext: context,
+          viewport
+        }).promise;
+
+        setLoaded(true);
+      } catch (err) {
+        console.error('Error rendering thumbnail:', err);
+      }
+    };
+
+    renderThumb();
+  }, [pdf, pageNum, loaded]);
+
+  return (
+    <div 
+      onClick={() => onClick(pageNum - 1)}
+      className={`cursor-pointer group flex flex-col items-center gap-2 p-2 rounded-lg transition-all ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'}`}
+    >
+      <div className="relative shadow-md group-hover:shadow-lg transition-shadow bg-white">
+        <canvas ref={canvasRef} className="block max-w-full h-auto" />
+      </div>
+      <span className={`text-sm font-medium ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
+        Pagina {pageNum}
+      </span>
+    </div>
+  );
+};
+
+// Page Component (High Res)
+const Page = forwardRef(({ pageNum, pdf, width, height, zoomLevel = 1 }, ref) => {
   const canvasRef = useRef(null);
   const [rendered, setRendered] = useState(false);
+  
+  // Re-render if zoom changes significantly or dimensions change
+  useEffect(() => {
+    if (!pdf || !canvasRef.current) return;
+
+    // Reset rendered state when critical props change
+    setRendered(false);
+  }, [pdf, pageNum, width, height]);
 
   useEffect(() => {
     if (!pdf || !canvasRef.current || rendered) return;
@@ -17,26 +91,26 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
 
-        // Clear canvas first
+        // Clear canvas
         context.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Get viewport at scale 1 to get original dimensions
         const viewport = page.getViewport({ scale: 1 });
         
-        // Calculate scale to fit the page in the given dimensions - 3x for crisp quality
+        // Calculate scale to fit - multiply by pixel ratio and zoom for sharpness
         const scaleX = width / viewport.width;
         const scaleY = height / viewport.height;
-        const scale = Math.min(scaleX, scaleY) * 3;
+        // 3x base quality + zoom consideration (though we clamp max canvas size to avoid memory issues)
+        const qualityScale = Math.min(scaleX, scaleY) * 3; 
         
-        const scaledViewport = page.getViewport({ scale });
+        const scaledViewport = page.getViewport({ scale: qualityScale });
 
-        // Set canvas size
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
         
-        // CSS size for display
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
+        // Force style to match container
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.objectFit = 'contain';
 
         // White background
         context.fillStyle = 'white';
@@ -57,7 +131,7 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height, rendered]);
 
   return (
-    <div ref={ref} className="page" style={{ backgroundColor: 'white', width, height }}>
+    <div ref={ref} className="page shadow-sm" style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}>
       <canvas ref={canvasRef} />
     </div>
   );
@@ -65,14 +139,20 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
 
 Page.displayName = 'Page';
 
+// --- Main Component ---
+
 export default function PageFlipBook({ pdfUrl, title }) {
   const [pdf, setPdf] = useState(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // UI State
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showThumbnails, setShowThumbnails] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState({ width: 400, height: 566 });
   const [isMobile, setIsMobile] = useState(false);
   
@@ -80,405 +160,330 @@ export default function PageFlipBook({ pdfUrl, title }) {
   const containerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Natural paper page flip sound
+  // --- Audio Setup ---
   useEffect(() => {
     const createFlipSound = () => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Longer, more realistic paper flip sound
         const duration = 0.35;
         const bufferSize = audioContext.sampleRate * duration;
         const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate);
         
         for (let channel = 0; channel < 2; channel++) {
           const data = buffer.getChannelData(channel);
-          
           for (let i = 0; i < bufferSize; i++) {
             const t = i / bufferSize;
-            
-            // Multi-layer envelope
-            const attack = Math.min(t * 10, 1);
-            const sustain = 1 - Math.pow(t, 0.5);
-            const envelope = attack * sustain;
-            
-            // Crisp noise
-            const crispNoise = (Math.random() * 2 - 1) * 0.4;
-            
-            // Whoosh
-            const whooshFreq = 80 + t * 200;
-            const whoosh = Math.sin(i / audioContext.sampleRate * whooshFreq * Math.PI * 2) * 0.15;
-            
-            // Paper crinkle
-            const crinkle = Math.random() > 0.97 ? (Math.random() - 0.5) * 0.6 : 0;
-            
-            // Thump at end
-            const thumpTime = 0.7;
-            const thump = t > thumpTime ? Math.sin((t - thumpTime) * 500) * Math.exp(-(t - thumpTime) * 30) * 0.3 : 0;
-            
-            const stereoOffset = channel === 0 ? 0.02 : -0.02;
-            
-            data[i] = (crispNoise + whoosh + crinkle + thump + stereoOffset) * envelope;
+            const envelope = Math.min(t * 10, 1) * (1 - Math.pow(t, 0.5));
+            const sound = (Math.random() * 2 - 1) * 0.4;
+            data[i] = sound * envelope;
           }
         }
-        
         return { audioContext, buffer };
       } catch (e) {
         return null;
       }
     };
-    
     audioRef.current = createFlipSound();
   }, []);
 
-  // Calculate dimensions based on container, screen size, and detect mobile
-  useEffect(() => {
-    const updateDimensions = () => {
-      const screenWidth = window.innerWidth;
-      const screenHeight = window.innerHeight;
-      const mobile = screenWidth < 768;
-      setIsMobile(mobile);
-      
-      if (isFullscreen) {
-        // Fullscreen: MAXIMIZE page size - fill the screen
-        const availableHeight = screenHeight - 80;
-        const availableWidth = screenWidth - 100;
-        
-        if (mobile) {
-          // Single page fullscreen - as big as possible
-          const maxByHeight = availableHeight * 0.95;
-          const maxByWidth = availableWidth * 0.95;
-          const pageHeight = Math.min(maxByHeight, maxByWidth * 1.414);
-          setDimensions({ width: pageHeight / 1.414, height: pageHeight });
-        } else {
-          // Two pages - maximize height, fit width
-          const maxByHeight = availableHeight * 0.92;
-          const maxByWidth = (availableWidth - 40) / 2; // Two pages side by side
-          const pageWidth = Math.min(maxByHeight / 1.414, maxByWidth);
-          const pageHeight = pageWidth * 1.414;
-          setDimensions({ width: pageWidth, height: pageHeight });
-        }
-      } else {
-        // Normal view: scale based on available space - BIGGER
-        const containerWidth = containerRef.current?.clientWidth || screenWidth;
-        const maxHeight = Math.min(screenHeight * 0.75, 800);
-        
-        if (mobile) {
-          // Single page on mobile - fill width nicely
-          const pageWidth = containerWidth * 0.85;
-          const pageHeight = Math.min(pageWidth * 1.414, screenHeight * 0.7);
-          setDimensions({ width: pageHeight / 1.414, height: pageHeight });
-        } else {
-          // Two pages on desktop - bigger, based on screen size
-          // Use more of the available space
-          const idealHeight = screenHeight * 0.65;
-          const idealWidth = idealHeight / 1.414;
-          // Make sure two pages fit side by side with some margin
-          const maxPageWidth = (containerWidth - 200) / 2;
-          const pageWidth = Math.min(idealWidth, maxPageWidth, 500);
-          setDimensions({ width: pageWidth, height: pageWidth * 1.414 });
-        }
-      }
-    };
+  const playFlipSound = useCallback(() => {
+    if (soundEnabled && audioRef.current) {
+      try {
+        const { audioContext, buffer } = audioRef.current;
+        if (audioContext.state === 'suspended') audioContext.resume();
+        const source = audioContext.createBufferSource();
+        const gainNode = audioContext.createGain();
+        source.buffer = buffer;
+        gainNode.gain.value = 0.5;
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        source.start(0);
+      } catch (e) {}
+    }
+  }, [soundEnabled]);
 
+  // --- Dimensions & Responsive ---
+  const updateDimensions = useCallback(() => {
+    if (!containerRef.current) return;
+
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const mobile = screenWidth < 768;
+    setIsMobile(mobile);
+    
+    // Adjust dimensions based on available space
+    // If fullscreen, we take almost everything. If not, we take container width/height
+    const containerW = containerRef.current.clientWidth;
+    // We subtract some space for the toolbar (bottom) and padding
+    const availableH = isFullscreen ? screenHeight - 100 : Math.min(screenHeight * 0.8, 800);
+    const availableW = isFullscreen ? screenWidth - 40 : containerW;
+
+    if (mobile) {
+      // Mobile: Single page
+      const pageWidth = Math.min(availableW * 0.95, 500);
+      const pageHeight = Math.min(pageWidth * 1.414, availableH);
+      // Recalculate width from height to maintain aspect ratio if height is the limiting factor
+      const finalWidth = Math.min(pageWidth, pageHeight / 1.414);
+      setDimensions({ width: finalWidth, height: finalWidth * 1.414 });
+    } else {
+      // Desktop: Double page
+      // Max width for one page
+      const maxPageW = (availableW - 80) / 2;
+      const maxPageH = availableH;
+      
+      let w = Math.min(maxPageW, maxPageH / 1.414);
+      let h = w * 1.414;
+      
+      setDimensions({ width: w, height: h });
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
-  }, [isFullscreen]);
+  }, [updateDimensions]);
 
-  // Load PDF
+  // --- PDF Loading ---
   useEffect(() => {
     if (!pdfUrl) return;
-
     const loadPdf = async () => {
       try {
         setLoading(true);
-        setError(null);
-        
         const loadingTask = pdfjsLib.getDocument(pdfUrl);
         const pdfDoc = await loadingTask.promise;
-        
         setPdf(pdfDoc);
         setTotalPages(pdfDoc.numPages);
       } catch (err) {
-        console.error('Error loading PDF:', err);
+        console.error(err);
         setError('Kon PDF niet laden');
       } finally {
         setLoading(false);
       }
     };
-
     loadPdf();
   }, [pdfUrl]);
 
-  // Play flip sound
-  const playFlipSound = useCallback(() => {
-    if (soundEnabled && audioRef.current) {
-      try {
-        const { audioContext, buffer } = audioRef.current;
-        
-        if (audioContext.state === 'suspended') {
-          audioContext.resume();
-        }
-        
-        const source = audioContext.createBufferSource();
-        const gainNode = audioContext.createGain();
-        
-        source.buffer = buffer;
-        gainNode.gain.value = 0.7;
-        
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        source.start(0);
-      } catch (e) {
-        console.log('Could not play sound');
-      }
+  // --- Navigation ---
+  const goToPage = (p) => {
+    if (flipBookRef.current) {
+      flipBookRef.current.pageFlip().flip(p);
     }
-  }, [soundEnabled]);
-
-  // Handle page flip
-  const onFlip = useCallback((e) => {
-    setCurrentPage(e.data);
-    playFlipSound();
-  }, [playFlipSound]);
-
-  // Navigation
-  const goToPrevPage = () => {
-    flipBookRef.current?.pageFlip()?.flipPrev();
   };
 
-  const goToNextPage = () => {
-    flipBookRef.current?.pageFlip()?.flipNext();
+  const handleZoom = (delta) => {
+    setZoom(prev => {
+      const newZoom = Math.max(1, Math.min(prev + delta, 3));
+      return newZoom;
+    });
   };
 
-  // Fullscreen toggle with proper state management
+  // --- Fullscreen ---
   const toggleFullscreen = async () => {
     try {
       if (!isFullscreen) {
-        await containerRef.current?.requestFullscreen();
-        setIsFullscreen(true);
+        await containerRef.current.requestFullscreen();
       } else {
-        if (document.fullscreenElement) {
-          await document.exitFullscreen();
-        }
-        setIsFullscreen(false);
+        await document.exitFullscreen();
       }
     } catch (e) {
-      // Fallback: just toggle the state for CSS-based fullscreen
       setIsFullscreen(!isFullscreen);
     }
   };
 
-  // Listen for fullscreen changes (e.g., user presses Escape)
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'ArrowLeft') goToPrevPage();
-      if (e.key === 'ArrowRight') goToNextPage();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
+  // --- Render ---
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-8 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="spinner mx-auto mb-4"></div>
-          <p className="text-gray-500">Magazine laden...</p>
-        </div>
+      <div className="flex h-96 items-center justify-center bg-white rounded-xl shadow-sm">
+        <div className="spinner" />
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="bg-white rounded-xl shadow-lg p-8 flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <p className="text-red-500">{error}</p>
-        </div>
-      </div>
-    );
+    return <div className="text-red-500 text-center p-8">{error}</div>;
   }
 
   return (
     <div 
       ref={containerRef}
-      className={`rounded-xl overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-gradient-to-b from-gray-100 to-gray-200' : ''}`}
+      className={`relative flex flex-col items-center bg-gray-100 transition-all duration-300 ${
+        isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen justify-center' : 'rounded-xl min-h-[600px] justify-center py-8'
+      }`}
     >
-      {/* Toolbar */}
-      <div className={`flex items-center justify-between px-4 py-2 ${isFullscreen ? 'bg-white/90 backdrop-blur' : 'bg-transparent'}`}>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title={soundEnabled ? 'Geluid uit' : 'Geluid aan'}
-          >
-            {soundEnabled ? (
-              <Volume2 className="w-5 h-5 text-gray-600" />
-            ) : (
-              <VolumeX className="w-5 h-5 text-gray-400" />
-            )}
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={goToPrevPage}
-            disabled={currentPage <= 0}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-30"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <span className="text-sm text-gray-600 min-w-[80px] text-center">
-            {currentPage + 1} - {Math.min(currentPage + 2, totalPages)} / {totalPages}
-          </span>
-          <button
-            onClick={goToNextPage}
-            disabled={currentPage >= totalPages - 2}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-30"
-          >
-            <ChevronRight className="w-5 h-5 text-gray-600" />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={async () => {
-              try {
-                const response = await fetch(pdfUrl);
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${title}.pdf`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
-              } catch (error) {
-                window.open(pdfUrl, '_blank');
-              }
-            }}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Download PDF"
-          >
-            <Download className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title={isFullscreen ? 'Verkleinen' : 'Volledig scherm'}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="w-5 h-5 text-gray-600" />
-            ) : (
-              <Maximize2 className="w-5 h-5 text-gray-600" />
-            )}
-          </button>
-        </div>
+      {/* Top Controls (Title & Close Grid) */}
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-20 pointer-events-none">
+         <div className="pointer-events-auto">
+            {/* Reserved for logo or branding */}
+         </div>
+         {/* Close Grid Button */}
+         {showThumbnails && (
+           <button 
+             onClick={() => setShowThumbnails(false)}
+             className="pointer-events-auto bg-white/90 backdrop-blur shadow-lg p-2 rounded-full hover:bg-white transition-transform hover:scale-110"
+           >
+             <X className="w-6 h-6 text-gray-700" />
+           </button>
+         )}
       </div>
 
-      {/* Flipbook with side navigation */}
-      <div className={`flex items-center justify-center py-4 gap-4 md:gap-8 ${isFullscreen ? 'h-[calc(100vh-60px)]' : ''}`}>
-        {/* Left navigation arrow */}
-        <button
-          onClick={goToPrevPage}
-          disabled={currentPage <= 0}
-          className="hidden md:flex p-3 rounded-full bg-white/80 shadow-md hover:bg-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
-        >
-          <ChevronLeft className="w-6 h-6 text-gray-700" />
-        </button>
-
-        {pdf && totalPages > 0 && (
-          <div 
-            className="relative"
-            style={{ 
-              filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.3)) drop-shadow(0 8px 16px rgba(0,0,0,0.2))'
-            }}
-          >
-            <HTMLFlipBook
-              ref={flipBookRef}
-              width={dimensions.width}
-              height={dimensions.height}
-              size="fixed"
-              minWidth={200}
-              maxWidth={1000}
-              minHeight={280}
-              maxHeight={1400}
-              showCover={true}
-              mobileScrollSupport={true}
-              onFlip={onFlip}
-              className=""
-              style={{ margin: 0, padding: 0 }}
-              startPage={0}
-              drawShadow={true}
-              flippingTime={500}
-              usePortrait={isMobile}
-              startZIndex={0}
-              autoSize={false}
-              maxShadowOpacity={0.5}
-              showPageCorners={true}
-              disableFlipByClick={false}
-            >
-              {Array.from({ length: totalPages }, (_, i) => (
-                <Page
-                  key={i}
-                  pageNum={i + 1}
-                  pdf={pdf}
-                  width={dimensions.width}
-                  height={dimensions.height}
-                />
-              ))}
-            </HTMLFlipBook>
-          </div>
-        )}
-
-        {/* Right navigation arrow */}
-        <button
-          onClick={goToNextPage}
-          disabled={currentPage >= totalPages - (isMobile ? 1 : 2)}
-          className="hidden md:flex p-3 rounded-full bg-white/80 shadow-md hover:bg-white transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
-        >
-          <ChevronRight className="w-6 h-6 text-gray-700" />
-        </button>
-      </div>
-
-      {/* Mobile navigation buttons */}
-      {isMobile && (
-        <div className="flex justify-center gap-4 py-2">
+      {/* Main Content Area */}
+      <div className={`relative transition-transform duration-300 ease-out flex items-center justify-center ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
+           style={{ transform: `scale(${zoom})` }}
+      >
+        {/* Left Arrow */}
+        {!isMobile && (
           <button
-            onClick={goToPrevPage}
-            disabled={currentPage <= 0}
-            className="p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30"
+            onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
+            className="absolute -left-16 lg:-left-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            disabled={currentPage === 0}
           >
             <ChevronLeft className="w-6 h-6 text-gray-700" />
           </button>
+        )}
+
+        {/* The Book */}
+        <div className="shadow-2xl">
+          <HTMLFlipBook
+            ref={flipBookRef}
+            width={dimensions.width}
+            height={dimensions.height}
+            size="fixed"
+            minWidth={200}
+            maxWidth={1000}
+            minHeight={280}
+            maxHeight={1400}
+            showCover={true}
+            mobileScrollSupport={true}
+            onFlip={(e) => {
+              setCurrentPage(e.data);
+              playFlipSound();
+            }}
+            className="flipbook"
+            style={{ margin: 0, padding: 0 }}
+            startPage={0}
+            drawShadow={true}
+            flippingTime={600}
+            usePortrait={isMobile}
+            startZIndex={0}
+            autoSize={false}
+            maxShadowOpacity={0.4}
+            showPageCorners={!isMobile}
+            disableFlipByClick={false}
+          >
+            {Array.from({ length: totalPages }, (_, i) => (
+              <Page
+                key={i}
+                pageNum={i + 1}
+                pdf={pdf}
+                width={dimensions.width}
+                height={dimensions.height}
+                zoomLevel={zoom}
+              />
+            ))}
+          </HTMLFlipBook>
+        </div>
+
+        {/* Right Arrow */}
+        {!isMobile && (
           <button
-            onClick={goToNextPage}
+            onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
+            className="absolute -right-16 lg:-right-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
             disabled={currentPage >= totalPages - 1}
-            className="p-3 rounded-full bg-white shadow-lg hover:bg-gray-50 transition-colors disabled:opacity-30"
           >
             <ChevronRight className="w-6 h-6 text-gray-700" />
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Navigation hint */}
-      <div className="text-center py-1">
-        <p className="text-xs text-gray-400">
-          {isMobile ? 'Swipe of gebruik de pijlen' : 'Klik op de hoek of gebruik ← → om te bladeren'}
-        </p>
+      {/* Thumbnails Overlay */}
+      <div 
+        className={`absolute inset-0 bg-white/95 backdrop-blur-sm z-10 transition-opacity duration-300 overflow-y-auto ${
+          showThumbnails ? 'opacity-100 visible' : 'opacity-0 invisible'
+        }`}
+      >
+        <div className="max-w-6xl mx-auto p-8 pt-20">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+            {showThumbnails && Array.from({ length: totalPages }, (_, i) => (
+              <Thumbnail
+                key={i}
+                pageNum={i + 1}
+                pdf={pdf}
+                isSelected={i === currentPage || (i + 1 === currentPage && !isMobile)}
+                onClick={(p) => {
+                  goToPage(p);
+                  setShowThumbnails(false);
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Floating Toolbar */}
+      <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 bg-white/90 backdrop-blur-md shadow-xl rounded-full border border-white/50 z-50 transition-transform duration-300 ${showThumbnails ? 'translate-y-24' : ''}`}>
+        
+        {/* Page Navigation */}
+        <div className="flex items-center gap-1 border-r border-gray-200 pr-3">
+           <button onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700">
+             <ChevronLeft className="w-5 h-5" />
+           </button>
+           <span className="text-sm font-medium text-gray-700 min-w-[60px] text-center tabular-nums">
+             {currentPage + 1} / {totalPages}
+           </span>
+           <button onClick={() => flipBookRef.current?.pageFlip()?.flipNext()} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700">
+             <ChevronRight className="w-5 h-5" />
+           </button>
+        </div>
+
+        {/* Zoom Controls */}
+        <div className="hidden md:flex items-center gap-1 border-r border-gray-200 pr-3">
+          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 1} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+            <ZoomOut className="w-5 h-5" />
+          </button>
+          <span className="text-sm font-medium text-gray-700 min-w-[40px] text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 3} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+            <ZoomIn className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tools */}
+        <div className="flex items-center gap-2 pl-1">
+          <button 
+            onClick={() => setShowThumbnails(!showThumbnails)} 
+            className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${showThumbnails ? 'bg-blue-100 text-blue-600' : 'text-gray-700'}`}
+            title="Overzicht"
+          >
+            <Grid className="w-5 h-5" />
+          </button>
+
+          <button 
+            onClick={() => setSoundEnabled(!soundEnabled)} 
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-700"
+            title={soundEnabled ? "Geluid uit" : "Geluid aan"}
+          >
+            {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          </button>
+
+          <div className="w-px h-4 bg-gray-300 mx-1" />
+
+          <button 
+            onClick={toggleFullscreen}
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-700"
+            title="Volledig scherm"
+          >
+            {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+        </div>
+
       </div>
     </div>
   );
