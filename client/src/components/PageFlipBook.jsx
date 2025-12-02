@@ -24,21 +24,14 @@ if (typeof window !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 15; // 15MB limit
 }
 
-// Suppress PDF.js warnings in production
-const originalWarn = console.warn;
-console.warn = (...args) => {
-  // Filter out PDF.js font warnings and cache warnings
-  if (args[0] && (
-    args[0].includes('TT: invalid function id') ||
-    args[0].includes('GlobalImageCache.setData - cache limit reached') ||
-    args[0].includes('No cmap table available') ||
-    args[0].includes('Knockout groups not supported') ||
-    args[0].includes('loadFont - translateFont failed')
-  )) {
-    return; // Suppress these warnings
-  }
-  originalWarn(...args);
-};
+// Scoped warning suppression for PDF.js only
+const suppressPdfWarnings = (message = '') => (
+  message.includes('TT: invalid function id') ||
+  message.includes('GlobalImageCache.setData - cache limit reached') ||
+  message.includes('No cmap table available') ||
+  message.includes('Knockout groups not supported') ||
+  message.includes('loadFont - translateFont failed')
+);
 
 // PDF.js configuration for proper font rendering
 const PDF_OPTIONS = {

@@ -102,26 +102,41 @@ function MagazineCard({ magazine, onClick }) {
     let cancelled = false;
 
     const loadCover = async () => {
-      // First try the cover_url from the database
+      console.log('🔍 Loading cover for:', magazine.title, 'cover_url:', magazine.cover_url, 'pdf_url:', magazine.pdf_url);
+
+      // TEMP: Always generate from PDF first to debug
+      if (magazine.pdf_url) {
+        console.log('📄 Generating cover from PDF (forced)');
+        generateFromPdf();
+        return;
+      }
+
+      // Fallback: try cover_url if no PDF
       if (magazine.cover_url) {
+        console.log('📸 Testing cover_url (fallback):', magazine.cover_url);
         // Test if the image loads
         const img = new Image();
         img.onload = () => {
+          console.log('✅ Cover URL loaded successfully:', magazine.cover_url);
           if (!cancelled) {
             setCoverUrl(magazine.cover_url);
             setLoading(false);
           }
         };
         img.onerror = () => {
-          // Cover URL failed, generate from PDF
-          if (!cancelled) generateFromPdf();
+          console.log('❌ Cover URL failed:', magazine.cover_url);
+          if (!cancelled) {
+            setError(true);
+            setLoading(false);
+          }
         };
         img.src = magazine.cover_url;
         return;
       }
-      
-      // No cover_url, generate from PDF
-      generateFromPdf();
+
+      console.log('❌ No cover_url or pdf_url available');
+      setError(true);
+      setLoading(false);
     };
 
     const generateFromPdf = async () => {
