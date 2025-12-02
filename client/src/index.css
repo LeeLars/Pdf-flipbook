@@ -30,6 +30,26 @@ html.embedded, html.embedded body, html.embedded #root {
   perspective: 2000px;
 }
 
+
+.flipbook-stage {
+  position: relative;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  border-radius: 24px;
+  padding: min(4vw, 48px) min(5vw, 64px);
+  transition: transform 0.45s ease, box-shadow 0.45s ease;
+  will-change: transform;
+}
+
+.flipbook-stage.cover-closed {
+  padding-left: min(6vw, 80px);
+  padding-right: min(6vw, 80px);
+}
+
+.flipbook-stage.spread-open {
+  padding-left: min(4vw, 56px);
+  padding-right: min(4vw, 56px);
+}
+
 .flipbook {
   width: 100%;
   max-width: 900px;
