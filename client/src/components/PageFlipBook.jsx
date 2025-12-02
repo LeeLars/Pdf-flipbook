@@ -96,7 +96,7 @@ const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
 };
 
 // Page Component (High Res) - with render task cancellation to prevent canvas conflicts
-const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
+const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
   const [rendered, setRendered] = useState(false);
@@ -173,7 +173,12 @@ const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   }, [pdf, pageNum, width, height]);
 
   return (
-    <div ref={ref} className="page" style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}>
+    <div
+      ref={ref}
+      className={`page relative ${isCover ? 'page-cover' : ''}`}
+      data-density={isCover ? 'hard' : 'soft'}
+      style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}
+    >
       <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
       {!rendered && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -227,65 +232,47 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   useEffect(() => {
     let audioContext;
 
-    const createNewspaperFlipSound = (ctx) => {
-      // Newspaper Foley 4 style - crisp paper flip
-      const duration = 0.4;
+    const createPaperFlipSound = (ctx) => {
+      const duration = 0.65;
       const sampleRate = ctx.sampleRate;
-      const bufferSize = sampleRate * duration;
+      const bufferSize = Math.floor(sampleRate * duration);
       const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
 
       for (let channel = 0; channel < 2; channel++) {
         const data = buffer.getChannelData(channel);
-        
+        let slow = 0;
+        let mid = 0;
+
         for (let i = 0; i < bufferSize; i++) {
           const t = i / bufferSize;
-          
-          // Multi-stage envelope like real paper
-          let envelope;
-          if (t < 0.05) {
-            // Quick attack - paper starts moving
-            envelope = t / 0.05;
-          } else if (t < 0.15) {
-            // Peak rustle
-            envelope = 1.0;
-          } else if (t < 0.35) {
-            // Main flip sound
-            envelope = 1.0 - (t - 0.15) * 1.5;
-          } else {
-            // Soft landing
-            envelope = Math.max(0, 0.7 - (t - 0.35) * 2);
-          }
-          
-          // Crisp high-frequency rustle (newspaper texture)
-          const rustle = (Math.random() * 2 - 1) * 0.7;
-          
-          // Filtered mid-frequency body
-          const bodyFreq = 180 + Math.sin(t * 20) * 50;
-          const body = Math.sin((i / sampleRate) * bodyFreq * Math.PI * 2) * 0.15;
-          
-          // Whoosh - air movement
-          const whooshFreq = 400 - t * 350;
-          const whoosh = Math.sin((i / sampleRate) * whooshFreq * Math.PI * 2) * 0.2 * (1 - t);
-          
-          // Paper crinkle - random high freq bursts
-          const crinkle = (Math.random() > 0.92) ? (Math.random() - 0.5) * 0.5 : 0;
-          
-          // Thump when page lands (around t=0.3)
-          const thumpCenter = 0.32;
-          const thumpWidth = 0.08;
-          const thumpEnv = Math.exp(-Math.pow((t - thumpCenter) / thumpWidth, 2));
-          const thump = Math.sin((t - thumpCenter) * 300) * thumpEnv * 0.3;
-          
-          // Stereo spread
-          const pan = channel === 0 ? 0.9 : 1.1;
-          
-          // Combine all elements
-          const sample = (rustle * 0.4 + body + whoosh + crinkle + thump) * envelope * pan;
-          
-          // Soft clip for warmth
-          data[i] = Math.tanh(sample * 1.5) * 0.7;
+          const noise = (Math.random() * 2 - 1);
+
+          // Build gentle filtered layers to mimic paper fibers
+          slow += (noise - slow) * 0.04; // bassy body
+          mid += (noise - mid) * 0.18;   // mid rustle
+
+          const rustleEnv = Math.exp(-Math.pow((t - 0.28) / 0.2, 2));
+          const swipeEnv = Math.exp(-Math.pow((t - 0.35) / 0.22, 2));
+          const snapEnv = Math.exp(-Math.pow((t - 0.18) / 0.05, 2));
+          const thumpEnv = Math.exp(-Math.pow((t - 0.58) / 0.08, 2));
+
+          const rustle = (noise - slow) * rustleEnv * 0.45;
+          const swipe = (mid - slow) * swipeEnv * 0.4;
+          const snap = snapEnv * (Math.random() * 0.6 - 0.3);
+          const thump = thumpEnv * Math.sin(t * Math.PI * 110) * 0.25;
+
+          const attack = Math.min(t / 0.12, 1);
+          const release = 1 - Math.min(Math.max((t - 0.42) / 0.4, 0), 1);
+          const envelope = Math.pow(Math.max(attack * release, 0), 1.1);
+
+          const base = slow * 0.15;
+          const sample = (base + rustle + swipe + snap + thump) * envelope;
+          const pan = channel === 0 ? 0.92 : 1.0;
+
+          data[i] = Math.tanh(sample * 1.25) * pan;
         }
       }
+
       return buffer;
     };
 
@@ -293,7 +280,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffer = createNewspaperFlipSound(audioContext);
+        audioRef.current.buffer = createPaperFlipSound(audioContext);
       } catch (e) {}
     };
 
@@ -314,7 +301,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       const source = audioContext.createBufferSource();
       source.buffer = buffer;
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.5;
+      gainNode.gain.value = 0.28;
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
       source.start(0);
@@ -506,6 +493,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
                 width={dimensions.width}
                 height={dimensions.height}
                 zoomLevel={zoom}
+                isCover={i === 0 || i === totalPages - 1}
               />
             ))}
           </HTMLFlipBook>
