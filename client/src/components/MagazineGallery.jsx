@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Filter } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -88,87 +88,89 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 
 function MagazineCard({ magazine, onClick }) {
   const cardRef = useRef(null);
+  const canvasRef = useRef(null);
   const [imageError, setImageError] = useState(false);
-  const [coverGenerated, setCoverGenerated] = useState(false);
-  const [coverDataUrl, setCoverDataUrl] = useState(null);
-  const [isInView, setIsInView] = useState(false);
-  const [loadingCover, setLoadingCover] = useState(false);
+  const [coverReady, setCoverReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  // Observe when the card enters the viewport so we only render PDFs when needed
+  // Always try to generate cover from PDF when image fails or doesn't exist
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsInView(true);
-            observer.disconnect();
-          }
-        });
-      },
-      { rootMargin: '250px' }
-    );
-
-    if (cardRef.current) {
-      observer.observe(cardRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
-
-  const generateCover = useCallback(async () => {
-    if (!magazine.pdf_url || loadingCover || coverGenerated) return;
-
-    const cacheKey = magazine.id || magazine.pdf_url;
-    if (coverCache.has(cacheKey)) {
-      setCoverDataUrl(coverCache.get(cacheKey));
-      setCoverGenerated(true);
+    // If we have a working cover_url, don't generate
+    if (magazine.cover_url && !imageError) return;
+    
+    // If no PDF url, can't generate
+    if (!magazine.pdf_url) {
+      setLoadError(true);
       return;
     }
 
-    try {
-      setLoadingCover(true);
-      const loadingTask = pdfjsLib.getDocument({ url: magazine.pdf_url, withCredentials: false });
-      const pdf = await loadingTask.promise;
-      const page = await pdf.getPage(1);
-
-      const viewport = page.getViewport({ scale: 1 });
-      const targetWidth = 450; // px for better clarity on retina displays
-      const scale = targetWidth / viewport.width;
-      const scaledViewport = page.getViewport({ scale });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = scaledViewport.width;
-      canvas.height = scaledViewport.height;
-      const context = canvas.getContext('2d');
-
-      context.fillStyle = '#fff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-
-      await page.render({
-        canvasContext: context,
-        viewport: scaledViewport,
-        renderInteractiveForms: false
-      }).promise;
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      coverCache.set(cacheKey, dataUrl);
-      setCoverDataUrl(dataUrl);
-      setCoverGenerated(true);
-    } catch (err) {
-      console.error('Error generating cover:', err);
-    } finally {
-      setLoadingCover(false);
+    // Check cache first
+    const cacheKey = magazine.id || magazine.pdf_url;
+    if (coverCache.has(cacheKey)) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          setCoverReady(true);
+        };
+        img.src = coverCache.get(cacheKey);
+      }
+      return;
     }
-  }, [magazine.pdf_url, loadingCover, coverGenerated, magazine.id]);
 
-  // Trigger cover generation when needed
-  useEffect(() => {
-    if (!isInView) return;
-    if (magazine.cover_url && !imageError) return;
+    // Generate cover from PDF
+    const generateCover = async () => {
+      try {
+        const loadingTask = pdfjsLib.getDocument({
+          url: magazine.pdf_url,
+          cMapUrl: 'https://unpkg.com/pdfjs-dist@4.0.379/cmaps/',
+          cMapPacked: true,
+        });
+        
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const viewport = page.getViewport({ scale: 1 });
+        const targetWidth = 400;
+        const scale = targetWidth / viewport.width;
+        const scaledViewport = page.getViewport({ scale });
+
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        const context = canvas.getContext('2d');
+
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({
+          canvasContext: context,
+          viewport: scaledViewport,
+        }).promise;
+
+        // Cache the result
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        coverCache.set(cacheKey, dataUrl);
+        setCoverReady(true);
+      } catch (err) {
+        console.error('Error generating cover for', magazine.title, err);
+        setLoadError(true);
+      }
+    };
+
     generateCover();
-  }, [isInView, magazine.cover_url, imageError, generateCover]);
+  }, [magazine.pdf_url, magazine.cover_url, magazine.id, magazine.title, imageError]);
 
-  const showGeneratedCover = (!magazine.cover_url || imageError) && coverGenerated && coverDataUrl;
+  // Determine what to show
+  const showCoverImage = magazine.cover_url && !imageError;
+  const showCanvas = !showCoverImage && !loadError;
+  const showFallback = loadError && !showCoverImage;
 
   return (
     <button
@@ -176,9 +178,10 @@ function MagazineCard({ magazine, onClick }) {
       onClick={onClick}
       className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
-      {/* Cover Image */}
+      {/* Cover */}
       <div className="aspect-[3/4] bg-gray-100 relative overflow-hidden">
-        {magazine.cover_url && !imageError ? (
+        {/* Try cover_url first */}
+        {showCoverImage && (
           <img
             src={magazine.cover_url}
             alt={magazine.title}
@@ -186,17 +189,33 @@ function MagazineCard({ magazine, onClick }) {
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
           />
-        ) : showGeneratedCover ? (
-          <img
-            src={coverDataUrl}
-            alt={magazine.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-300">
-            <div className="w-10 h-10 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
-            <span className="text-xs text-gray-400">Cover laden...</span>
+        )}
+
+        {/* Canvas for PDF-generated cover */}
+        {showCanvas && (
+          <>
+            <canvas 
+              ref={canvasRef}
+              className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${coverReady ? 'opacity-100' : 'opacity-0'}`}
+            />
+            {!coverReady && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-xs text-gray-400">Laden...</span>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Fallback icon when everything fails */}
+        {showFallback && (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+            <div className="text-center">
+              <svg className="w-12 h-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span className="text-xs text-gray-400">Magazine</span>
+            </div>
           </div>
         )}
         
@@ -208,7 +227,7 @@ function MagazineCard({ magazine, onClick }) {
         </div>
       </div>
 
-      {/* Title only - no date */}
+      {/* Title */}
       <div className="p-3 border-t border-gray-50">
         <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center group-hover:text-blue-600 transition-colors">
           {magazine.title}
