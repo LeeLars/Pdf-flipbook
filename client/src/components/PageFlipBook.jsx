@@ -232,10 +232,12 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
+    maxWidth: '100%',
     height: `${stageDimensions.height}px`,
-    transform: stageTransform,
-    transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-  }), [stageDimensions, stageTransform]);
+    transform: `${stageTransform} scale(${zoom})`,
+    transformOrigin: 'center center',
+    transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
+  }), [stageDimensions, stageTransform, zoom]);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {

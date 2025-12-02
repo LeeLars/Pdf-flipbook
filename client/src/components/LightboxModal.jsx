@@ -11,7 +11,7 @@ export default function LightboxModal({ magazine, onClose }) {
       onClick={onClose}
     >
       <div 
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] mx-4 overflow-hidden"
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[1500px] max-h-[92vh] mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -26,7 +26,7 @@ export default function LightboxModal({ magazine, onClose }) {
         </div>
 
         {/* Flipbook */}
-        <div className="p-4 overflow-auto max-h-[calc(90vh-60px)]">
+        <div className="p-6 overflow-hidden">
           <PageFlipBook 
             pdfUrl={magazine.pdf_url} 
             title={magazine.title}
