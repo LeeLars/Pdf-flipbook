@@ -230,46 +230,25 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     return () => observer.disconnect();
   }, []);
 
-  // --- Audio Setup (Real page flip sound) ---
+  // --- Audio Setup (Page flip sound) ---
   useEffect(() => {
-    // Multiple page flip sounds for variety - using reliable public domain sounds
-    const sounds = [
-      'https://assets.mixkit.co/active_storage/sfx/2617/2617-preview.mp3', // paper slide
-      'https://assets.mixkit.co/active_storage/sfx/2619/2619-preview.mp3', // page turn
-    ];
-    
-    const audioElements = sounds.map(src => {
-      const audio = new Audio(src);
-      audio.volume = 0.4;
-      audio.preload = 'auto';
-      return audio;
-    });
-    
-    audioRef.current.sounds = audioElements;
-    audioRef.current.lastIndex = -1;
+    const audio = new Audio('/turnPage.mp3');
+    audio.volume = 0.5;
+    audio.preload = 'auto';
+    audioRef.current.audio = audio;
 
     return () => {
-      audioElements.forEach(a => {
-        a.pause();
-        a.src = '';
-      });
+      audio.pause();
+      audio.src = '';
     };
   }, []);
 
   const playFlipSound = useCallback(() => {
     if (!soundEnabled) return;
-    const { sounds, lastIndex } = audioRef.current;
-    if (!sounds?.length) return;
+    const { audio } = audioRef.current;
+    if (!audio) return;
 
     try {
-      // Pick a different sound than last time for variety
-      let idx = Math.floor(Math.random() * sounds.length);
-      if (idx === lastIndex && sounds.length > 1) {
-        idx = (idx + 1) % sounds.length;
-      }
-      audioRef.current.lastIndex = idx;
-      
-      const audio = sounds[idx];
       audio.currentTime = 0;
       audio.play().catch(() => {});
     } catch (e) {}
