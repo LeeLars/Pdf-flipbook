@@ -18,8 +18,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-// Premium flip sound sample (Pixabay - "Newspaper Foley 4")
-const FLIP_SAMPLE_URL = 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_9ff19fec20.mp3?filename=newspaper-foley-4-153637.mp3';
+// PDF.js configuration for proper font rendering
+const PDF_OPTIONS = {
+  cMapUrl: 'https://unpkg.com/pdfjs-dist@4.0.379/cmaps/',
+  cMapPacked: true,
+};
 
 // --- Components ---
 
@@ -72,70 +75,91 @@ const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
   );
 };
 
-// Page Component (High Res)
-const Page = forwardRef(({ pageNum, pdf, width, height, zoomLevel = 1 }, ref) => {
+// Page Component (High Res) - with render task cancellation to prevent canvas conflicts
+const Page = forwardRef(({ pageNum, pdf, width, height }, ref) => {
   const canvasRef = useRef(null);
+  const renderTaskRef = useRef(null);
   const [rendered, setRendered] = useState(false);
-  
-  // Re-render if zoom changes significantly or dimensions change
+
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
 
-    // Reset rendered state when critical props change
-    setRendered(false);
-  }, [pdf, pageNum, width, height]);
-
-  useEffect(() => {
-    if (!pdf || !canvasRef.current || rendered) return;
+    let cancelled = false;
 
     const renderPage = async () => {
+      // Cancel any ongoing render
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {}
+      }
+
       try {
         const page = await pdf.getPage(pageNum);
-        const canvas = canvasRef.current;
-        const context = canvas.getContext('2d');
+        if (cancelled) return;
 
-        // Clear canvas
-        context.clearRect(0, 0, canvas.width, canvas.height);
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const context = canvas.getContext('2d');
 
         const viewport = page.getViewport({ scale: 1 });
         
-        // Calculate scale to fit - multiply by pixel ratio and zoom for sharpness
+        // 2x quality for sharpness on retina
         const scaleX = width / viewport.width;
         const scaleY = height / viewport.height;
-        // 3x base quality + zoom consideration (though we clamp max canvas size to avoid memory issues)
-        const qualityScale = Math.min(scaleX, scaleY) * 3; 
+        const qualityScale = Math.min(scaleX, scaleY) * 2;
         
         const scaledViewport = page.getViewport({ scale: qualityScale });
 
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
-        
-        // Force style to match container
         canvas.style.width = '100%';
         canvas.style.height = '100%';
-        canvas.style.objectFit = 'contain';
 
         // White background
         context.fillStyle = 'white';
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        await page.render({
+        const renderTask = page.render({
           canvasContext: context,
           viewport: scaledViewport
-        }).promise;
-
-        setRendered(true);
+        });
+        
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        
+        if (!cancelled) {
+          setRendered(true);
+        }
       } catch (err) {
-        console.error('Error rendering page:', err);
+        if (err.name !== 'RenderingCancelledException') {
+          console.error('Error rendering page:', err);
+        }
       }
     };
 
+    setRendered(false);
     renderPage();
-  }, [pdf, pageNum, width, height, rendered]);
+
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {}
+      }
+    };
+  }, [pdf, pageNum, width, height]);
 
   return (
-    <div ref={ref} className="page shadow-sm" style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}>
-      <canvas ref={canvasRef} />
+    <div ref={ref} className="page" style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}>
+      <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
+      {!rendered && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+        </div>
+      )}
     </div>
   );
 });
@@ -161,15 +185,15 @@ export default function PageFlipBook({ pdfUrl, title }) {
   
   const flipBookRef = useRef(null);
   const containerRef = useRef(null);
-  const audioRef = useRef({ audioContext: null, sampleBuffer: null, fallbackBuffer: null });
+  const audioRef = useRef({ audioContext: null, buffer: null });
 
-  // --- Audio Setup (Newspaper Foley sample with synthesized fallback) ---
+  // --- Audio Setup (Synthesized paper flip sound) ---
   useEffect(() => {
     let audioContext;
 
-    const createFallbackBuffer = (ctx) => {
-      // Synthetic "fwip" in case sample fails
-      const duration = 0.28;
+    const createFlipBuffer = (ctx) => {
+      // Realistic paper flip sound - "fwip" + "ritsel"
+      const duration = 0.32;
       const bufferSize = ctx.sampleRate * duration;
       const buffer = ctx.createBuffer(2, bufferSize, ctx.sampleRate);
 
@@ -177,63 +201,66 @@ export default function PageFlipBook({ pdfUrl, title }) {
         const data = buffer.getChannelData(channel);
         for (let i = 0; i < bufferSize; i++) {
           const t = i / bufferSize;
-          const envelope = t < 0.08 ? t / 0.08 : Math.pow(1 - (t - 0.08) / 0.92, 3);
-          const whiteNoise = (Math.random() * 2 - 1) * 0.6;
-          const whooshFreq = 250 - t * 200;
-          const whoosh = Math.sin((i / ctx.sampleRate) * whooshFreq * Math.PI * 2) * 0.25;
-          data[i] = (whiteNoise + whoosh) * envelope * 0.5;
+          
+          // Envelope: quick attack, smooth decay
+          const attack = Math.min(t * 12, 1);
+          const decay = Math.pow(1 - t, 2);
+          const envelope = attack * decay;
+          
+          // Paper rustle (filtered noise)
+          const noise = (Math.random() * 2 - 1);
+          
+          // Whoosh sweep from high to low
+          const freq = 300 - t * 250;
+          const whoosh = Math.sin((i / ctx.sampleRate) * freq * Math.PI * 2) * 0.3;
+          
+          // Soft thump at the end (page landing)
+          const thumpTime = 0.7;
+          const thump = t > thumpTime 
+            ? Math.sin((t - thumpTime) * 400) * Math.exp(-(t - thumpTime) * 25) * 0.4 
+            : 0;
+          
+          // Stereo variation
+          const stereo = channel === 0 ? 1.02 : 0.98;
+          
+          data[i] = ((noise * 0.5 + whoosh + thump) * envelope * 0.6) * stereo;
         }
       }
       return buffer;
     };
 
-    const initAudio = async () => {
+    const initAudio = () => {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const fallbackBuffer = createFallbackBuffer(audioContext);
         audioRef.current.audioContext = audioContext;
-        audioRef.current.fallbackBuffer = fallbackBuffer;
-
-        // Attempt to fetch "Newspaper Foley 4" sample
-        const response = await fetch(FLIP_SAMPLE_URL, { mode: 'cors' });
-        const arrayBuffer = await response.arrayBuffer();
-        const sampleBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        audioRef.current.sampleBuffer = sampleBuffer;
-      } catch (error) {
-        console.warn('Kon realistische flipsound niet laden, gebruik fallback.', error);
+        audioRef.current.buffer = createFlipBuffer(audioContext);
+      } catch (e) {
+        // Audio not supported
       }
     };
 
     initAudio();
 
     return () => {
-      try {
-        audioContext?.close();
-      } catch (e) {
-        /* noop */
-      }
+      try { audioContext?.close(); } catch (e) {}
     };
   }, []);
 
   const playFlipSound = useCallback(() => {
     if (!soundEnabled) return;
-    const { audioContext, sampleBuffer, fallbackBuffer } = audioRef.current;
-    if (!audioContext) return;
+    const { audioContext, buffer } = audioRef.current;
+    if (!audioContext || !buffer) return;
 
     try {
       if (audioContext.state === 'suspended') audioContext.resume();
       const source = audioContext.createBufferSource();
-      source.buffer = sampleBuffer || fallbackBuffer;
-      if (!source.buffer) return;
-
+      source.buffer = buffer;
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = sampleBuffer ? 0.8 : 0.6;
+      gainNode.gain.value = 0.5;
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
       source.start(0);
-    } catch (error) {
-      console.warn('Kon flipsound niet afspelen.', error);
-    }
+    } catch (e) {}
   }, [soundEnabled]);
 
   // --- Dimensions & Responsive ---
@@ -284,7 +311,10 @@ export default function PageFlipBook({ pdfUrl, title }) {
     const loadPdf = async () => {
       try {
         setLoading(true);
-        const loadingTask = pdfjsLib.getDocument(pdfUrl);
+        const loadingTask = pdfjsLib.getDocument({
+          url: pdfUrl,
+          ...PDF_OPTIONS
+        });
         const pdfDoc = await loadingTask.promise;
         setPdf(pdfDoc);
         setTotalPages(pdfDoc.numPages);
