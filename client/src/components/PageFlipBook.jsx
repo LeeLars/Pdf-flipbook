@@ -18,10 +18,35 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
+// Reduce PDF.js memory usage in production
+if (typeof window !== 'undefined') {
+  // Limit cache size to prevent memory issues
+  pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 15; // 15MB limit
+}
+
+// Suppress PDF.js warnings in production
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  // Filter out PDF.js font warnings and cache warnings
+  if (args[0] && (
+    args[0].includes('TT: invalid function id') ||
+    args[0].includes('GlobalImageCache.setData - cache limit reached') ||
+    args[0].includes('No cmap table available') ||
+    args[0].includes('Knockout groups not supported') ||
+    args[0].includes('loadFont - translateFont failed')
+  )) {
+    return; // Suppress these warnings
+  }
+  originalWarn(...args);
+};
+
 // PDF.js configuration for proper font rendering
 const PDF_OPTIONS = {
   cMapUrl: 'https://unpkg.com/pdfjs-dist@4.0.379/cmaps/',
   cMapPacked: true,
+  disableRange: true, // Disable range requests for better CORS
+  disableStream: false,
+  disableAutoFetch: false,
 };
 
 // --- Components ---

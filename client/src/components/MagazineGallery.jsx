@@ -5,8 +5,15 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Set up the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
+// Reduce PDF.js memory usage in production
+if (typeof window !== 'undefined') {
+  // Limit cache size to prevent memory issues
+  pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 10; // 10MB limit
+}
+
 // Simple in-memory cache per session so we don't re-render the same PDF covers repeatedly
 const coverCache = new Map();
+const MAX_CACHE_SIZE = 20; // Limit cache size
 
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
@@ -171,6 +178,11 @@ function MagazineCard({ magazine, onClick }) {
         coverCache.set(cacheKey, dataUrl);
         setCoverUrl(dataUrl);
         setLoading(false);
+
+        // Clean up canvas to free memory
+        canvas.width = 1;
+        canvas.height = 1;
+        context.clearRect(0, 0, 1, 1);
       } catch (err) {
         console.error('Cover generation failed:', magazine.title);
         if (!cancelled) {
