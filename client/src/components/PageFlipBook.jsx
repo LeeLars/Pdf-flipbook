@@ -214,18 +214,16 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
+  // Shift book left when spread is open so both pages are centered
   const stageOffset = useMemo(() => {
     if (isMobile) return 0;
     if (currentPage === 0) return 0;
-    return -dimensions.width * 0.15;
+    return -dimensions.width * 0.5;
   }, [isMobile, currentPage, dimensions.width]);
 
   const stageStyle = useMemo(() => ({
     transform: `translateX(${stageOffset}px)`,
-    boxShadow: currentPage === 0
-      ? '0 18px 45px rgba(15, 23, 42, 0.25)'
-      : '0 28px 60px rgba(15, 23, 42, 0.35)'
-  }), [stageOffset, currentPage]);
+  }), [stageOffset]);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -245,47 +243,42 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   useEffect(() => {
     let audioContext;
 
-    const createNewspaperFlipVariants = (ctx, count = 4) => {
+    const createMagazineFlipVariants = (ctx, count = 4) => {
       const variants = [];
       for (let c = 0; c < count; c++) {
-        const duration = 0.65 + Math.random() * 0.15;
+        const duration = 0.5 + Math.random() * 0.12;
         const sampleRate = ctx.sampleRate;
         const bufferSize = Math.floor(sampleRate * duration);
         const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
 
-        const pinchCenter = 0.08 + Math.random() * 0.03;
-        const peelCenter = 0.18 + Math.random() * 0.04;
-        const sweepCenter = 0.34 + Math.random() * 0.1;
-        const seatCenter = 0.55 + Math.random() * 0.06;
+        const grabCenter = 0.06 + Math.random() * 0.02;
+        const flipCenter = 0.22 + Math.random() * 0.06;
+        const settleCenter = 0.42 + Math.random() * 0.08;
 
         for (let channel = 0; channel < 2; channel++) {
           const data = buffer.getChannelData(channel);
-          let low = 0;
-          let mid = 0;
-          let high = 0;
+          let lp = 0;
+          let hp = 0;
 
           for (let i = 0; i < bufferSize; i++) {
             const t = i / bufferSize;
-            const noise = Math.random() * 2 - 1;
+            const n = Math.random() * 2 - 1;
 
-            low += (noise - low) * 0.015;
-            mid += (noise - mid) * 0.065;
-            high += (noise - high) * 0.22;
+            lp += (n - lp) * 0.03;
+            hp += (n - hp) * 0.28;
 
-            const attack = Math.min(Math.max((t - 0.02) / 0.12, 0), 1);
-            const release = 1 - Math.min(Math.max((t - 0.5) / 0.25, 0), 1);
-            const envelope = Math.pow(Math.max(attack * release, 0), 0.9);
+            const attack = Math.min(t / 0.08, 1);
+            const release = 1 - Math.min(Math.max((t - 0.38) / 0.3, 0), 1);
+            const env = Math.pow(Math.max(attack * release, 0), 0.85);
 
-            const pinch = Math.exp(-Math.pow((t - pinchCenter) / 0.02, 2)) * 0.7;
-            const peel = Math.exp(-Math.pow((t - peelCenter) / 0.04, 2)) * (high - mid) * 0.8;
-            const sweep = Math.exp(-Math.pow((t - sweepCenter) / 0.15, 2)) * (mid - low) * 1.1;
-            const seat = Math.exp(-Math.pow((t - seatCenter) / 0.06, 2)) * Math.sin(t * Math.PI * 100) * 0.35;
-            const fiberBed = low * 0.35;
-            const grit = (Math.random() > 0.996 ? (Math.random() * 0.6 - 0.3) : 0);
+            const grab = Math.exp(-Math.pow((t - grabCenter) / 0.018, 2)) * 0.55;
+            const flip = Math.exp(-Math.pow((t - flipCenter) / 0.08, 2)) * (hp - lp) * 1.0;
+            const settle = Math.exp(-Math.pow((t - settleCenter) / 0.05, 2)) * Math.sin(t * Math.PI * 90) * 0.3;
+            const body = lp * 0.25;
 
-            const pan = channel === 0 ? 0.94 : 1.04;
-            const sample = (fiberBed + pinch + peel + sweep + seat + grit) * envelope;
-            data[i] = Math.tanh(sample * 1.2) * pan;
+            const pan = channel === 0 ? 0.95 : 1.03;
+            const sample = (body + grab + flip + settle) * env;
+            data[i] = Math.tanh(sample * 1.3) * pan;
           }
         }
 
@@ -299,7 +292,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffers = createNewspaperFlipVariants(audioContext);
+        audioRef.current.buffers = createMagazineFlipVariants(audioContext);
       } catch (e) {}
     };
 
@@ -475,7 +468,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
         {/* The Book */}
         <div
-          className={`flipbook-stage shadow-2xl ${currentPage === 0 ? 'cover-closed' : 'spread-open'}`}
+          className="flipbook-stage"
           style={stageStyle}
         >
           <HTMLFlipBook
