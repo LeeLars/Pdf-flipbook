@@ -165,7 +165,8 @@ export default function PageFlipBook({ pdfUrl, title }) {
     const createFlipSound = () => {
       try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const duration = 0.35;
+        // Shorter, crisper sound (approx 0.3s)
+        const duration = 0.3;
         const bufferSize = audioContext.sampleRate * duration;
         const buffer = audioContext.createBuffer(2, bufferSize, audioContext.sampleRate);
         
@@ -173,9 +174,28 @@ export default function PageFlipBook({ pdfUrl, title }) {
           const data = buffer.getChannelData(channel);
           for (let i = 0; i < bufferSize; i++) {
             const t = i / bufferSize;
-            const envelope = Math.min(t * 10, 1) * (1 - Math.pow(t, 0.5));
-            const sound = (Math.random() * 2 - 1) * 0.4;
-            data[i] = sound * envelope;
+            
+            // "Fwip" envelope: Fast attack, quick decay
+            // Peak at t=0.1
+            let envelope = 0;
+            if (t < 0.1) {
+                envelope = t / 0.1; // Rise
+            } else {
+                envelope = Math.pow(1 - ((t - 0.1) / 0.9), 3); // Decay
+            }
+
+            // High frequency noise for "Ritsel" (Rustle)
+            const whiteNoise = Math.random() * 2 - 1;
+            
+            // "Whoosh" low frequency sweep
+            // From 400Hz down to 100Hz
+            const freq = 400 - t * 300;
+            const sine = Math.sin(i / audioContext.sampleRate * freq * Math.PI * 2);
+            
+            // Combine: mostly noise for texture, some sine for body
+            const signal = (whiteNoise * 0.8 + sine * 0.2);
+            
+            data[i] = signal * envelope * 0.5; // Scale volume
           }
         }
         return { audioContext, buffer };
