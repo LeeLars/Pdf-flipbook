@@ -176,7 +176,7 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
     <div
       ref={ref}
       className={`page relative ${isCover ? 'page-cover' : ''}`}
-      data-density="soft"
+      data-density={isCover ? 'hard' : 'soft'}
       style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}
     >
       <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
@@ -214,7 +214,6 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
-  // No offset needed - the flipbook library handles centering
   const stageStyle = useMemo(() => ({}), []);
 
   // Observe container size for smoother responsive scaling
@@ -231,83 +230,48 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     return () => observer.disconnect();
   }, []);
 
-  // --- Audio Setup (Newspaper page turn) ---
+  // --- Audio Setup (Real page flip sound) ---
   useEffect(() => {
-    let audioContext;
-
-    // Create realistic paper page turn sound
-    const createPageFlipSound = (ctx, count = 4) => {
-      const variants = [];
-      for (let v = 0; v < count; v++) {
-        const duration = 0.35 + Math.random() * 0.1;
-        const sampleRate = ctx.sampleRate;
-        const len = Math.floor(sampleRate * duration);
-        const buffer = ctx.createBuffer(1, len, sampleRate);
-        const data = buffer.getChannelData(0);
-
-        // Randomize timing for each variant
-        const liftPeak = 0.08 + Math.random() * 0.04;
-        const flipPeak = 0.35 + Math.random() * 0.1;
-        const landPeak = 0.7 + Math.random() * 0.1;
-
-        for (let i = 0; i < len; i++) {
-          const t = i / len;
-          
-          // White noise base
-          let sample = (Math.random() * 2 - 1);
-          
-          // Lift: quick crisp sound at start
-          const lift = Math.exp(-Math.pow((t - liftPeak) / 0.03, 2)) * 0.6;
-          
-          // Flip: the swoosh of paper moving through air
-          const flip = Math.exp(-Math.pow((t - flipPeak) / 0.12, 2)) * 0.4;
-          
-          // Land: paper hitting the other side
-          const land = Math.exp(-Math.pow((t - landPeak) / 0.04, 2)) * 0.5;
-          
-          // Combine envelopes
-          const envelope = lift + flip + land;
-          
-          // Apply envelope and soft clip
-          sample = sample * envelope;
-          sample = Math.tanh(sample * 2) * 0.5;
-          
-          data[i] = sample;
-        }
-        variants.push(buffer);
-      }
-      return variants;
-    };
-
-    const initAudio = () => {
-      try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        audioRef.current.audioContext = audioContext;
-        audioRef.current.buffers = createPageFlipSound(audioContext);
-      } catch (e) {}
-    };
-
-    initAudio();
+    // Multiple page flip sounds for variety - using reliable public domain sounds
+    const sounds = [
+      'https://assets.mixkit.co/active_storage/sfx/2617/2617-preview.mp3', // paper slide
+      'https://assets.mixkit.co/active_storage/sfx/2619/2619-preview.mp3', // page turn
+    ];
+    
+    const audioElements = sounds.map(src => {
+      const audio = new Audio(src);
+      audio.volume = 0.4;
+      audio.preload = 'auto';
+      return audio;
+    });
+    
+    audioRef.current.sounds = audioElements;
+    audioRef.current.lastIndex = -1;
 
     return () => {
-      try { audioContext?.close(); } catch (e) {}
+      audioElements.forEach(a => {
+        a.pause();
+        a.src = '';
+      });
     };
   }, []);
 
   const playFlipSound = useCallback(() => {
     if (!soundEnabled) return;
-    const { audioContext, buffers } = audioRef.current;
-    if (!audioContext || !buffers?.length) return;
+    const { sounds, lastIndex } = audioRef.current;
+    if (!sounds?.length) return;
 
     try {
-      if (audioContext.state === 'suspended') audioContext.resume();
-      const source = audioContext.createBufferSource();
-      source.buffer = buffers[Math.floor(Math.random() * buffers.length)];
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.3;
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      source.start(0);
+      // Pick a different sound than last time for variety
+      let idx = Math.floor(Math.random() * sounds.length);
+      if (idx === lastIndex && sounds.length > 1) {
+        idx = (idx + 1) % sounds.length;
+      }
+      audioRef.current.lastIndex = idx;
+      
+      const audio = sounds[idx];
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
     } catch (e) {}
   }, [soundEnabled]);
 
