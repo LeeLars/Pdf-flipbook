@@ -214,16 +214,8 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
-  // Shift book left when spread is open so both pages are centered
-  const stageOffset = useMemo(() => {
-    if (isMobile) return 0;
-    if (currentPage === 0) return 0;
-    return -dimensions.width * 0.5;
-  }, [isMobile, currentPage, dimensions.width]);
-
-  const stageStyle = useMemo(() => ({
-    transform: `translateX(${stageOffset}px)`,
-  }), [stageOffset]);
+  // No offset needed - the flipbook library handles centering
+  const stageStyle = useMemo(() => ({}), []);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -243,48 +235,47 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   useEffect(() => {
     let audioContext;
 
-    const createMagazineFlipVariants = (ctx, count = 4) => {
+    // Create realistic paper page turn sound
+    const createPageFlipSound = (ctx, count = 4) => {
       const variants = [];
-      for (let c = 0; c < count; c++) {
-        const duration = 0.5 + Math.random() * 0.12;
+      for (let v = 0; v < count; v++) {
+        const duration = 0.35 + Math.random() * 0.1;
         const sampleRate = ctx.sampleRate;
-        const bufferSize = Math.floor(sampleRate * duration);
-        const buffer = ctx.createBuffer(2, bufferSize, sampleRate);
+        const len = Math.floor(sampleRate * duration);
+        const buffer = ctx.createBuffer(1, len, sampleRate);
+        const data = buffer.getChannelData(0);
 
-        const grabCenter = 0.06 + Math.random() * 0.02;
-        const flipCenter = 0.22 + Math.random() * 0.06;
-        const settleCenter = 0.42 + Math.random() * 0.08;
+        // Randomize timing for each variant
+        const liftPeak = 0.08 + Math.random() * 0.04;
+        const flipPeak = 0.35 + Math.random() * 0.1;
+        const landPeak = 0.7 + Math.random() * 0.1;
 
-        for (let channel = 0; channel < 2; channel++) {
-          const data = buffer.getChannelData(channel);
-          let lp = 0;
-          let hp = 0;
-
-          for (let i = 0; i < bufferSize; i++) {
-            const t = i / bufferSize;
-            const n = Math.random() * 2 - 1;
-
-            lp += (n - lp) * 0.03;
-            hp += (n - hp) * 0.28;
-
-            const attack = Math.min(t / 0.08, 1);
-            const release = 1 - Math.min(Math.max((t - 0.38) / 0.3, 0), 1);
-            const env = Math.pow(Math.max(attack * release, 0), 0.85);
-
-            const grab = Math.exp(-Math.pow((t - grabCenter) / 0.018, 2)) * 0.55;
-            const flip = Math.exp(-Math.pow((t - flipCenter) / 0.08, 2)) * (hp - lp) * 1.0;
-            const settle = Math.exp(-Math.pow((t - settleCenter) / 0.05, 2)) * Math.sin(t * Math.PI * 90) * 0.3;
-            const body = lp * 0.25;
-
-            const pan = channel === 0 ? 0.95 : 1.03;
-            const sample = (body + grab + flip + settle) * env;
-            data[i] = Math.tanh(sample * 1.3) * pan;
-          }
+        for (let i = 0; i < len; i++) {
+          const t = i / len;
+          
+          // White noise base
+          let sample = (Math.random() * 2 - 1);
+          
+          // Lift: quick crisp sound at start
+          const lift = Math.exp(-Math.pow((t - liftPeak) / 0.03, 2)) * 0.6;
+          
+          // Flip: the swoosh of paper moving through air
+          const flip = Math.exp(-Math.pow((t - flipPeak) / 0.12, 2)) * 0.4;
+          
+          // Land: paper hitting the other side
+          const land = Math.exp(-Math.pow((t - landPeak) / 0.04, 2)) * 0.5;
+          
+          // Combine envelopes
+          const envelope = lift + flip + land;
+          
+          // Apply envelope and soft clip
+          sample = sample * envelope;
+          sample = Math.tanh(sample * 2) * 0.5;
+          
+          data[i] = sample;
         }
-
         variants.push(buffer);
       }
-
       return variants;
     };
 
@@ -292,7 +283,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioRef.current.audioContext = audioContext;
-        audioRef.current.buffers = createMagazineFlipVariants(audioContext);
+        audioRef.current.buffers = createPageFlipSound(audioContext);
       } catch (e) {}
     };
 
