@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { Filter } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Set up the worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
 
@@ -83,14 +86,19 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
 function MagazineCard({ magazine, onClick }) {
   const canvasRef = useRef(null);
   const [coverGenerated, setCoverGenerated] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  // Generate cover from PDF if no cover_url exists
+  // Generate cover from PDF if no cover_url exists OR if loading failed
   useEffect(() => {
-    if (magazine.cover_url || !magazine.pdf_url || coverGenerated) return;
+    // If we have a URL and it hasn't failed yet, don't generate
+    if (magazine.cover_url && !imageError) return;
+    
+    if (!magazine.pdf_url || coverGenerated) return;
 
     const generateCover = async () => {
       try {
-        const pdf = await pdfjsLib.getDocument(magazine.pdf_url).promise;
+        const loadingTask = pdfjsLib.getDocument(magazine.pdf_url);
+        const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
         
         const canvas = canvasRef.current;
@@ -99,8 +107,9 @@ function MagazineCard({ magazine, onClick }) {
         const context = canvas.getContext('2d');
         const viewport = page.getViewport({ scale: 1 });
         
-        // Scale to fit nicely
-        const scale = 300 / viewport.width;
+        // Scale to fit nicely - High Quality
+        // We want a width of about 300px-400px for thumbnails
+        const scale = 400 / viewport.width;
         const scaledViewport = page.getViewport({ scale });
         
         canvas.width = scaledViewport.width;
@@ -118,40 +127,48 @@ function MagazineCard({ magazine, onClick }) {
     };
 
     generateCover();
-  }, [magazine.pdf_url, magazine.cover_url, coverGenerated]);
+  }, [magazine.pdf_url, magazine.cover_url, coverGenerated, imageError]);
 
   return (
     <button
       onClick={onClick}
-      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group"
+      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
       {/* Cover Image */}
       <div className="aspect-[3/4] bg-gray-100 relative overflow-hidden">
-        {magazine.cover_url ? (
+        {magazine.cover_url && !imageError ? (
           <img
             src={magazine.cover_url}
             alt={magazine.title}
+            onError={() => setImageError(true)}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
           />
         ) : (
-          <canvas 
-            ref={canvasRef}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+          <div className="w-full h-full relative">
+             {!coverGenerated && (
+               <div className="absolute inset-0 flex items-center justify-center text-gray-300">
+                 <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+               </div>
+             )}
+             <canvas 
+               ref={canvasRef}
+               className={`w-full h-full object-cover transition-opacity duration-300 ${coverGenerated ? 'opacity-100' : 'opacity-0'}`}
+             />
+          </div>
         )}
         
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-          <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-4 py-2 rounded-full text-sm font-medium text-gray-800">
-            Bekijken
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-gray-800 shadow-sm transform translate-y-2 group-hover:translate-y-0 transition-transform">
+            Lezen
           </span>
         </div>
       </div>
 
       {/* Title only - no date */}
-      <div className="p-3">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center">
+      <div className="p-3 border-t border-gray-50">
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center group-hover:text-blue-600 transition-colors">
           {magazine.title}
         </h3>
       </div>
