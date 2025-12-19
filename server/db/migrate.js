@@ -6,10 +6,6 @@ dotenv.config();
 const migrate = async () => {
   try {
     console.log('🔄 Database migratie starten...');
-    
-    // Test database connection first
-    await query('SELECT NOW()');
-    console.log('✅ Database verbinding OK');
 
     // Enable UUID extension
     await query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
@@ -88,11 +84,9 @@ const migrate = async () => {
     console.log('✅ Clients tabel aangemaakt');
 
     console.log('🎉 Database migratie voltooid!');
-    process.exit(0);
   } catch (error) {
     console.error('❌ Migratie fout:', error);
-    console.error(error.message);
-    process.exit(1);
+    throw error;
   }
 };
 

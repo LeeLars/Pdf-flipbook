@@ -4,7 +4,6 @@ import {
   ChevronRight, 
   Maximize2, 
   Minimize2, 
-  Download, 
   Volume2, 
   VolumeX,
   ZoomIn,
@@ -14,24 +13,6 @@ import {
 } from 'lucide-react';
 import HTMLFlipBook from 'react-pageflip';
 import * as pdfjsLib from 'pdfjs-dist';
-
-// Set up the worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-// Reduce PDF.js memory usage in production
-if (typeof window !== 'undefined') {
-  // Limit cache size to prevent memory issues
-  pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 15; // 15MB limit
-}
-
-// Scoped warning suppression for PDF.js only
-const suppressPdfWarnings = (message = '') => (
-  message.includes('TT: invalid function id') ||
-  message.includes('GlobalImageCache.setData - cache limit reached') ||
-  message.includes('No cmap table available') ||
-  message.includes('Knockout groups not supported') ||
-  message.includes('loadFont - translateFont failed')
-);
 
 // PDF.js configuration for proper font rendering
 const PDF_OPTIONS = {
@@ -214,6 +195,9 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
+  // Check if we're on the last page (back cover)
+  const isLastPage = currentPage >= totalPages - 1;
+
   const stageDimensions = useMemo(() => {
     const width = isMobile ? dimensions.width : dimensions.width * 2;
     return {
@@ -222,13 +206,23 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     };
   }, [dimensions.width, dimensions.height, isMobile]);
 
+  // Calculate transform to center the book properly
+  // - Cover (page 0): shift left by half page width so single cover is centered
+  // - Last page (back cover): shift right by half page width so single cover is centered  
+  // - Open book: no shift, spread is naturally centered
   const stageTransform = useMemo(() => {
     if (isMobile) return 'translateX(0px)';
     if (currentPage === 0) {
+      // Front cover: shift stage left so the right-side cover appears centered
       return `translateX(-${dimensions.width / 2}px)`;
     }
+    if (isLastPage && totalPages > 1) {
+      // Back cover: shift stage right so the left-side cover appears centered
+      return `translateX(${dimensions.width / 2}px)`;
+    }
+    // Open spread: centered naturally
     return 'translateX(0px)';
-  }, [isMobile, currentPage, dimensions.width]);
+  }, [isMobile, currentPage, dimensions.width, isLastPage, totalPages]);
 
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
@@ -287,11 +281,10 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     setIsMobile(mobile);
 
     const baseWidth = containerSize.width || screenWidth;
-    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.85 : screenHeight * 0.8);
+    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.9 : screenHeight * 0.8);
 
-    // Increase padding in modal for better fit
-    const horizontalPadding = mobile ? 32 : (isFullscreen ? 40 : (isModal ? 120 : 80));
-    const verticalPadding = mobile ? 120 : (isFullscreen ? 80 : (isModal ? 160 : 130));
+    const horizontalPadding = mobile ? 16 : (isFullscreen ? 40 : (isModal ? 48 : 80));
+    const verticalPadding = mobile ? 100 : (isFullscreen ? 80 : (isModal ? 110 : 130));
 
     const availableW = Math.max((isFullscreen ? screenWidth : baseWidth) - horizontalPadding, 260);
     const availableH = Math.max((isFullscreen ? screenHeight : baseHeight) - verticalPadding, 340);
@@ -302,9 +295,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     } else {
       const spreadWidth = availableW;
       const basePageWidth = Math.min(spreadWidth / 2, availableH / PAGE_RATIO);
-      // Scale down more in modal mode (0.9 instead of 1.2)
-      const scaleFactor = isModal ? 0.9 : 1.2;
-      const scaledPageWidth = Math.min(basePageWidth * scaleFactor, spreadWidth / 2);
+      const scaledPageWidth = Math.min(basePageWidth * 1.2, spreadWidth / 2);
       const pageHeight = scaledPageWidth * PAGE_RATIO;
       setDimensions({ width: scaledPageWidth, height: pageHeight });
     }
@@ -348,7 +339,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   const handleZoom = (delta) => {
     setZoom(prev => {
-      const newZoom = Math.max(0.8, Math.min(prev + delta, 2.5));
+      const newZoom = Math.max(1, Math.min(prev + delta, 3));
       return newZoom;
     });
   };
@@ -413,17 +404,17 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       </div>
 
       {/* Main Content Area */}
-      <div className={`relative transition-transform duration-300 ease-out flex items-center justify-center ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
-           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center', width: '100%' }}
+      <div className={`relative transition-all duration-300 ease-out flex items-center justify-center w-full ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
       >
         {/* Left Arrow */}
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
-            className="absolute -left-16 lg:-left-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            className="absolute -left-12 lg:-left-20 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
+            style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}
             disabled={currentPage === 0}
           >
-            <ChevronLeft className="w-6 h-6 text-gray-700" />
+            <ChevronLeft className="w-6 h-6 text-white" />
           </button>
         )}
 
@@ -451,17 +442,15 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
             style={{ width: stageDimensions.width, height: stageDimensions.height, margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
-            flippingTime={600}
+            flippingTime={700}
             usePortrait={isMobile}
             startZIndex={0}
             autoSize={false}
-            maxShadowOpacity={0.8}
+            maxShadowOpacity={1}
             showPageCorners={true}
             disableFlipByClick={false}
             clickEventForward={true}
             swipeDistance={30}
-            useMouseEvents={true}
-            renderOnlyPageLengthChange={false}
           >
             {Array.from({ length: totalPages }, (_, i) => (
               <Page
@@ -470,7 +459,6 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
                 pdf={pdf}
                 width={dimensions.width}
                 height={dimensions.height}
-                zoomLevel={zoom}
                 isCover={i === 0 || i === totalPages - 1}
               />
             ))}
@@ -481,10 +469,11 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
-            className="absolute -right-16 lg:-right-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            className="absolute -right-12 lg:-right-20 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
+            style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}
             disabled={currentPage >= totalPages - 1}
           >
-            <ChevronRight className="w-6 h-6 text-gray-700" />
+            <ChevronRight className="w-6 h-6 text-white" />
           </button>
         )}
       </div>
@@ -531,13 +520,13 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
         {/* Zoom Controls */}
         <div className="hidden md:flex items-center gap-1 border-r border-gray-200 pr-3">
-          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 0.8} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30 transition-opacity">
+          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 1} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
             <ZoomOut className="w-5 h-5" />
           </button>
           <span className="text-sm font-medium text-gray-700 min-w-[40px] text-center">
             {Math.round(zoom * 100)}%
           </span>
-          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 2.5} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30 transition-opacity">
+          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 3} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
             <ZoomIn className="w-5 h-5" />
           </button>
         </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   X, Upload, Trash2, Eye, EyeOff, Loader2, 
@@ -26,7 +26,7 @@ export default function AdminPanel({
   const { logout, user } = useAuthStore();
 
   // Keep ordered magazines in sync
-  useState(() => {
+  useEffect(() => {
     if (magazines) {
       setOrderedMagazines([...magazines]);
     }
