@@ -7,23 +7,6 @@ function App() {
   useEffect(() => {
     if (window.self !== window.top) {
       document.documentElement.classList.add('embedded');
-
-      // Keep the parent iframe height in sync to avoid inner scrollbars
-      const sendHeight = () => {
-        const height = document.documentElement.scrollHeight;
-        window.parent?.postMessage({ type: 'FLIPBOOK_HEIGHT', height }, '*');
-      };
-
-      sendHeight();
-
-      const resizeObserver = new ResizeObserver(sendHeight);
-      resizeObserver.observe(document.body);
-      window.addEventListener('resize', sendHeight);
-
-      return () => {
-        resizeObserver.disconnect();
-        window.removeEventListener('resize', sendHeight);
-      };
     }
   }, []);
 

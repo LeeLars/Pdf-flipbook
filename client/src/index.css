@@ -22,7 +22,7 @@ html, body, #root {
 /* When embedded in iframe */
 html.embedded, html.embedded body, html.embedded #root {
   background: transparent !important;
-  overflow: hidden !important; /* voorkom interne scrollbars */
+  overflow: visible !important;
 }
 
 /* Flipbook styles */
