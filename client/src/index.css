@@ -39,18 +39,18 @@ html.embedded, html.embedded body, html.embedded #root {
   /* Add 3D perspective for more realistic depth */
   perspective: 2500px;
   perspective-origin: center center;
+  /* Ensure content stays within bounds */
+  overflow: visible;
 }
 
 /* Ensure the flipbook wrapper centers properly */
 .stf__parent {
   margin: 0 auto !important;
   transform-style: preserve-3d;
+  position: relative !important;
 }
 
 .stf__wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   transform-style: preserve-3d;
 }
 

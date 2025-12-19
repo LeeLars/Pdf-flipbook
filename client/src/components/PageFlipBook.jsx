@@ -195,9 +195,11 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
-  // Check if we're on the last page (back cover)
+  // Check if we're on cover pages (single page display)
   const isLastPage = currentPage >= totalPages - 1;
+  const isCoverPage = currentPage === 0 || (isLastPage && totalPages > 1);
 
+  // Stage dimensions - always full spread width for the flipbook
   const stageDimensions = useMemo(() => {
     const width = isMobile ? dimensions.width : dimensions.width * 2;
     return {
@@ -206,32 +208,40 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     };
   }, [dimensions.width, dimensions.height, isMobile]);
 
-  // Calculate transform to center the book properly
-  // - Cover (page 0): shift left by half page width so single cover is centered
-  // - Last page (back cover): shift right by half page width so single cover is centered  
-  // - Open book: no shift, spread is naturally centered
-  const stageTransform = useMemo(() => {
-    if (isMobile) return 'translateX(0px)';
-    if (currentPage === 0) {
-      // Front cover: shift stage left so the right-side cover appears centered
-      return `translateX(-${dimensions.width / 2}px)`;
+  // Wrapper style - this centers the visible content
+  // When showing cover, we offset to center the single page
+  const wrapperStyle = useMemo(() => {
+    if (isMobile) {
+      return { width: '100%', display: 'flex', justifyContent: 'center' };
     }
-    if (isLastPage && totalPages > 1) {
-      // Back cover: shift stage right so the left-side cover appears centered
-      return `translateX(${dimensions.width / 2}px)`;
+    
+    // For cover pages, offset the container to center the visible page
+    if (isCoverPage) {
+      const offset = currentPage === 0 
+        ? dimensions.width / 2  // Front cover: offset right
+        : -dimensions.width / 2; // Back cover: offset left
+      return {
+        width: `${stageDimensions.width}px`,
+        marginLeft: `${offset}px`,
+        transition: 'margin 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
+      };
     }
-    // Open spread: centered naturally
-    return 'translateX(0px)';
-  }, [isMobile, currentPage, dimensions.width, isLastPage, totalPages]);
+    
+    // Open spread: no offset needed
+    return {
+      width: `${stageDimensions.width}px`,
+      marginLeft: '0px',
+      transition: 'margin 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
+    };
+  }, [isMobile, isCoverPage, currentPage, dimensions.width, stageDimensions.width]);
 
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
-    maxWidth: '100%',
     height: `${stageDimensions.height}px`,
-    transform: `${stageTransform} scale(${zoom})`,
+    transform: `scale(${zoom})`,
     transformOrigin: 'center center',
     transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
-  }), [stageDimensions, stageTransform, zoom]);
+  }), [stageDimensions, zoom]);
 
   // Observe container size for smoother responsive scaling
   useEffect(() => {
@@ -404,13 +414,13 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       </div>
 
       {/* Main Content Area */}
-      <div className={`relative transition-all duration-300 ease-out flex items-center justify-center w-full ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
+      <div className={`relative transition-all duration-300 ease-out flex items-center justify-center w-full overflow-hidden ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
       >
         {/* Left Arrow */}
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
-            className="absolute -left-12 lg:-left-20 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
+            className="absolute left-4 lg:left-8 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
             style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}
             disabled={currentPage === 0}
           >
@@ -418,11 +428,12 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
           </button>
         )}
 
-        {/* The Book */}
-        <div
-          className="flipbook-stage"
-          style={stageStyle}
-        >
+        {/* The Book Wrapper - handles centering offset for covers */}
+        <div style={wrapperStyle}>
+          <div
+            className="flipbook-stage"
+            style={stageStyle}
+          >
           <HTMLFlipBook
             ref={flipBookRef}
             width={dimensions.width}
@@ -463,13 +474,14 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
               />
             ))}
           </HTMLFlipBook>
+          </div>
         </div>
 
         {/* Right Arrow */}
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
-            className="absolute -right-12 lg:-right-20 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
+            className="absolute right-4 lg:right-8 p-3 rounded-full bg-black/20 backdrop-blur-sm hover:bg-black/40 transition-all hover:scale-110 z-10 disabled:opacity-0 disabled:pointer-events-none"
             style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.5))' }}
             disabled={currentPage >= totalPages - 1}
           >
