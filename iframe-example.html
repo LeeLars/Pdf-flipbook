@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Flipbook - Iframe Integratie</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f3f4f6;
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      color: #1f2937;
+      margin-bottom: 10px;
+    }
+    
+    .description {
+      color: #6b7280;
+      margin-bottom: 20px;
+    }
+    
+    #magazine-iframe {
+      width: 100%;
+      border: none;
+      min-height: 600px;
+      transition: height 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Magazine Flipbook Viewer</h1>
+    <p class="description">
+      Deze iframe past zich automatisch aan de inhoud aan.
+    </p>
+    
+    <!-- 
+      Vervang "jouw-client-slug" met je eigen client slug.
+      Bijvoorbeeld: /vrije-tijd of /mijn-bedrijf
+    -->
+    <iframe 
+      id="magazine-iframe"
+      src="http://localhost:5173/jouw-client-slug"
+      title="Magazine Flipbook"
+      scrolling="no"
+    ></iframe>
+  </div>
+
+  <script>
+    // Luister naar berichten van de iframe
+    window.addEventListener('message', function(event) {
+      // Verificatie: check of het bericht van de iframe komt
+      // In productie: vervang '*' met je specifieke origin voor betere beveiliging
+      
+      if (event.data && event.data.type === 'resize-iframe') {
+        const iframe = document.getElementById('magazine-iframe');
+        const newHeight = event.data.height;
+        
+        // Pas de iframe hoogte aan met een kleine marge
+        iframe.style.height = (newHeight + 20) + 'px';
+        
+        console.log('Iframe hoogte aangepast naar:', newHeight + 'px');
+      }
+    }, false);
+
+    // Initiële hoogte instelling
+    window.addEventListener('load', function() {
+      console.log('Iframe geladen - wacht op hoogte update van content...');
+    });
+  </script>
+</body>
+</html>

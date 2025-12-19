@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Settings } from 'lucide-react';
 import PageFlipBook from './PageFlipBook';
 import MagazineGallery from './MagazineGallery';
@@ -21,6 +21,9 @@ export default function MagazineViewer({ clientSlug }) {
   
   // Auth
   const { isAuthenticated, checkAuth } = useAuthStore();
+  
+  // Ref for measuring content height
+  const contentRef = useRef(null);
 
   // Fetch magazines
   const fetchMagazines = async () => {
@@ -51,6 +54,45 @@ export default function MagazineViewer({ clientSlug }) {
       checkAuth();
     }
   }, [clientSlug]);
+
+  // Automatic iframe height adjustment
+  useEffect(() => {
+    // Check if we're in an iframe
+    if (window.self === window.top) return;
+
+    const updateHeight = () => {
+      if (!contentRef.current) return;
+      
+      // Get the full height of the content
+      const height = contentRef.current.scrollHeight;
+      
+      // Send height to parent window
+      window.parent.postMessage({
+        type: 'resize-iframe',
+        height: height
+      }, '*');
+    };
+
+    // Update height after initial load and after magazines change
+    updateHeight();
+
+    // Use ResizeObserver to detect content changes
+    const resizeObserver = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    if (contentRef.current) {
+      resizeObserver.observe(contentRef.current);
+    }
+
+    // Also update on window resize
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [magazines, loading]);
 
   // Handle admin button click
   const handleAdminClick = () => {
@@ -105,7 +147,7 @@ export default function MagazineViewer({ clientSlug }) {
   }
 
   return (
-    <div className="min-h-screen bg-transparent">
+    <div ref={contentRef} className="min-h-screen bg-transparent">
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Latest Magazine Flipbook */}
