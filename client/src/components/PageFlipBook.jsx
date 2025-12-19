@@ -216,32 +216,15 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     };
   }, [dimensions.width, dimensions.height, isMobile]);
 
-  // Wrapper style - this centers the visible content
-  // When showing cover, we offset to center the single page
+  // Wrapper style - centers the flipbook properly
   const wrapperStyle = useMemo(() => {
-    if (isMobile) {
-      return { width: '100%', display: 'flex', justifyContent: 'center' };
-    }
-    
-    // For cover pages, offset the container to center the visible page
-    if (isCoverPage) {
-      const offset = currentPage === 0 
-        ? dimensions.width / 2  // Front cover: offset right
-        : -dimensions.width / 2; // Back cover: offset left
-      return {
-        width: `${stageDimensions.width}px`,
-        marginLeft: `${offset}px`,
-        transition: 'margin 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
-      };
-    }
-    
-    // Open spread: no offset needed
     return {
-      width: `${stageDimensions.width}px`,
-      marginLeft: '0px',
-      transition: 'margin 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%'
     };
-  }, [isMobile, isCoverPage, currentPage, dimensions.width, stageDimensions.width]);
+  }, []);
 
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
@@ -427,7 +410,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       </div>
 
       {/* Main Content Area */}
-      <div className={`relative flex items-center justify-center w-full overflow-hidden ${showThumbnails ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+      <div className={`relative flex items-center justify-center w-full ${showThumbnails ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
       >
         {/* Left Arrow */}
         {!isMobile && (
