@@ -194,7 +194,7 @@ Je zou moeten zien:
 <iframe 
   src="https://web-production-e48a7.up.railway.app/vrije-tijd"
   width="100%" 
-  height="800" 
+  height="1500" 
   frameborder="0"
   style="border: none; max-width: 100%;"
   loading="lazy"

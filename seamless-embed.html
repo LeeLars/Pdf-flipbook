@@ -1,0 +1,35 @@
+<!-- Seamlessly embed flipbook via AJAX (geen iframe zichtbaar) -->
+<div id="flipbook-container" style="width: 100%; min-height: 400px;">
+  <!-- Content wordt hier geladen -->
+  <div class="loading" style="text-align: center; padding: 50px;">
+    Laden van flipbook...
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const container = document.getElementById('flipbook-container');
+
+  // Laad de flipbook content via AJAX
+  fetch('https://web-production-e48a7.up.railway.app/embed/vrije-tijd')
+    .then(response => response.text())
+    .then(html => {
+      container.innerHTML = html;
+
+      // Injecteer de benodigde scripts
+      const script = document.createElement('script');
+      script.src = 'https://web-production-e48a7.up.railway.app/assets/index-[hash].js';
+      script.onload = function() {
+        // Start de React app
+        if (window.ReactApp) {
+          window.ReactApp.init(container);
+        }
+      };
+      document.head.appendChild(script);
+    })
+    .catch(error => {
+      container.innerHTML = '<p>Error loading flipbook</p>';
+      console.error('Error loading flipbook:', error);
+    });
+});
+</script>
