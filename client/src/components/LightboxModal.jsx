@@ -35,22 +35,12 @@ export default function LightboxModal({ magazine, onClose }) {
     <div 
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm overflow-hidden"
       onClick={onClose}
-      style={{ 
-        margin: 0, 
-        padding: 0, 
-        pointerEvents: 'auto',
-        transformStyle: 'preserve-3d'
-      }}
+      style={{ margin: 0, padding: 0 }}
     >
       <div 
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] max-h-[95vh] mx-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
-        style={{ 
-          overflow: 'hidden',
-          pointerEvents: 'auto',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden'
-        }}
+        style={{ overflow: 'hidden' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b bg-gray-50 flex-shrink-0">

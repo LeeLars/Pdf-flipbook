@@ -27,21 +27,10 @@ export default function LoginModal({ isOpen, onClose, onSuccess }) {
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop bg-black/50"
-      style={{
-        pointerEvents: 'auto',
-        transformStyle: 'preserve-3d'
-      }}
-    >
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop bg-black/50">
       <div 
         className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 relative" 
         onClick={(e) => e.stopPropagation()}
-        style={{
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden',
-          pointerEvents: 'auto'
-        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">

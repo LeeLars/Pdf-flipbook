@@ -236,11 +236,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     height: `${stageDimensions.height}px`,
     transform: `${stageTransform} scale(${zoom})`,
     transformOrigin: 'center center',
-    transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
-    willChange: 'transform',
-    backfaceVisibility: 'hidden',
-    WebkitBackfaceVisibility: 'hidden',
-    perspective: 2000
+    transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
   }), [stageDimensions, stageTransform, zoom]);
 
   // Observe container size for smoother responsive scaling
