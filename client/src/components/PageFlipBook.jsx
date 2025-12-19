@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, forwardRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef, useMemo, memo } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -18,31 +18,43 @@ import * as pdfjsLib from 'pdfjs-dist';
 const PDF_OPTIONS = {
   cMapUrl: 'https://unpkg.com/pdfjs-dist@4.0.379/cmaps/',
   cMapPacked: true,
-  disableRange: true, // Disable range requests for better CORS
+  disableRange: true,
   disableStream: false,
   disableAutoFetch: false,
 };
 
-const PAGE_RATIO = 1.414; // A4 height/width ratio
+const PAGE_RATIO = 1.414;
+
+// Debounce helper
+const debounce = (fn, ms) => {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+};
 
 // --- Components ---
 
-// Thumbnail Component
-const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
+// Thumbnail Component - memoized to prevent re-renders
+const Thumbnail = memo(({ pageNum, pdf, onClick, isSelected }) => {
   const canvasRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!pdf || !canvasRef.current || loaded) return;
 
+    let cancelled = false;
     const renderThumb = async () => {
       try {
         const page = await pdf.getPage(pageNum);
-        const canvas = canvasRef.current;
-        const context = canvas.getContext('2d');
+        if (cancelled) return;
         
-        // Small scale for thumbnails
-        const viewport = page.getViewport({ scale: 0.3 });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const context = canvas.getContext('2d');
+        const viewport = page.getViewport({ scale: 0.2 });
         
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -52,21 +64,24 @@ const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
           viewport
         }).promise;
 
-        setLoaded(true);
+        if (!cancelled) setLoaded(true);
       } catch (err) {
-        console.error('Error rendering thumbnail:', err);
+        if (err.name !== 'RenderingCancelledException') {
+          console.error('Thumbnail error:', err);
+        }
       }
     };
 
     renderThumb();
+    return () => { cancelled = true; };
   }, [pdf, pageNum, loaded]);
 
   return (
     <div 
       onClick={() => onClick(pageNum - 1)}
-      className={`cursor-pointer group flex flex-col items-center gap-2 p-2 rounded-lg transition-all ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'}`}
+      className={`cursor-pointer group flex flex-col items-center gap-2 p-2 rounded-lg ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'}`}
     >
-      <div className="relative shadow-md group-hover:shadow-lg transition-shadow bg-white">
+      <div className="relative shadow-md group-hover:shadow-lg bg-white">
         <canvas ref={canvasRef} className="block max-w-full h-auto" />
       </div>
       <span className={`text-sm font-medium ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
@@ -74,25 +89,25 @@ const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
       </span>
     </div>
   );
-};
+});
 
-// Page Component (High Res) - with render task cancellation to prevent canvas conflicts
-const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
+// Page Component - memoized, only re-renders when pdf or pageNum changes
+const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
+  const renderedRef = useRef(false);
   const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
+    // Skip if already rendered this page
+    if (renderedRef.current) return;
 
     let cancelled = false;
 
     const renderPage = async () => {
-      // Cancel any ongoing render
       if (renderTaskRef.current) {
-        try {
-          renderTaskRef.current.cancel();
-        } catch (e) {}
+        try { renderTaskRef.current.cancel(); } catch (e) {}
       }
 
       try {
@@ -103,22 +118,17 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
         if (!canvas) return;
 
         const context = canvas.getContext('2d');
-
         const viewport = page.getViewport({ scale: 1 });
         
-        // 2x quality for sharpness on retina
-        const scaleX = width / viewport.width;
-        const scaleY = height / viewport.height;
-        const qualityScale = Math.min(scaleX, scaleY) * 2;
-        
-        const scaledViewport = page.getViewport({ scale: qualityScale });
+        // 1.5x quality - balance between sharpness and performance
+        const scale = Math.min(width / viewport.width, height / viewport.height) * 1.5;
+        const scaledViewport = page.getViewport({ scale });
 
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
 
-        // White background
         context.fillStyle = 'white';
         context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -131,27 +141,25 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
         await renderTask.promise;
         
         if (!cancelled) {
+          renderedRef.current = true;
           setRendered(true);
         }
       } catch (err) {
         if (err.name !== 'RenderingCancelledException') {
-          console.error('Error rendering page:', err);
+          console.error('Page render error:', err);
         }
       }
     };
 
-    setRendered(false);
     renderPage();
 
     return () => {
       cancelled = true;
       if (renderTaskRef.current) {
-        try {
-          renderTaskRef.current.cancel();
-        } catch (e) {}
+        try { renderTaskRef.current.cancel(); } catch (e) {}
       }
     };
-  }, [pdf, pageNum, width, height]);
+  }, [pdf, pageNum]); // Remove width/height dependency to prevent re-renders
 
   return (
     <div
@@ -160,7 +168,7 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
       data-density={isCover ? 'hard' : 'soft'}
       style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}
     >
-      <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
+      <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.15s' }} />
       {!rendered && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
@@ -168,7 +176,7 @@ const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) 
       )}
     </div>
   );
-});
+}));
 
 Page.displayName = 'Page';
 
@@ -243,14 +251,18 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
   }), [stageDimensions, zoom]);
 
-  // Observe container size for smoother responsive scaling
+  // Observe container size with debounce to prevent excessive updates
   useEffect(() => {
     if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
+    
+    const debouncedUpdate = debounce((width, height) => {
+      setContainerSize({ width, height });
+    }, 150);
+    
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        const { width, height } = entry.contentRect;
-        setContainerSize({ width, height });
+        debouncedUpdate(entry.contentRect.width, entry.contentRect.height);
       }
     });
     observer.observe(containerRef.current);
@@ -313,8 +325,9 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   useEffect(() => {
     updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+    const debouncedResize = debounce(updateDimensions, 100);
+    window.addEventListener('resize', debouncedResize);
+    return () => window.removeEventListener('resize', debouncedResize);
   }, [updateDimensions]);
 
   // --- PDF Loading ---
@@ -414,7 +427,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       </div>
 
       {/* Main Content Area */}
-      <div className={`relative transition-all duration-300 ease-out flex items-center justify-center w-full overflow-hidden ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
+      <div className={`relative flex items-center justify-center w-full overflow-hidden ${showThumbnails ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
       >
         {/* Left Arrow */}
         {!isMobile && (

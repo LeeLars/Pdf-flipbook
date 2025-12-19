@@ -196,7 +196,7 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
+      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg text-left w-full group"
     >
       {/* Cover */}
       <div className="bg-gray-50 relative overflow-hidden">
@@ -210,7 +210,8 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
           <img
             src={coverUrl}
             alt={magazine.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover"
+            loading="lazy"
           />
         )}
 
@@ -222,17 +223,11 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
           </div>
         )}
         
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-gray-800 shadow-sm">
-            Lezen
-          </span>
-        </div>
       </div>
 
       {/* Title */}
       <div className="p-3 border-t border-gray-50">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center group-hover:text-blue-600 transition-colors">
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center">
           {magazine.title}
         </h3>
       </div>
