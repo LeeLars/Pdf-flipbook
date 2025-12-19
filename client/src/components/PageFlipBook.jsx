@@ -287,10 +287,11 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     setIsMobile(mobile);
 
     const baseWidth = containerSize.width || screenWidth;
-    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.9 : screenHeight * 0.8);
+    const baseHeight = containerSize.height || (isModal ? screenHeight * 0.85 : screenHeight * 0.8);
 
-    const horizontalPadding = mobile ? 16 : (isFullscreen ? 40 : (isModal ? 48 : 80));
-    const verticalPadding = mobile ? 100 : (isFullscreen ? 80 : (isModal ? 110 : 130));
+    // Increase padding in modal for better fit
+    const horizontalPadding = mobile ? 32 : (isFullscreen ? 40 : (isModal ? 120 : 80));
+    const verticalPadding = mobile ? 120 : (isFullscreen ? 80 : (isModal ? 160 : 130));
 
     const availableW = Math.max((isFullscreen ? screenWidth : baseWidth) - horizontalPadding, 260);
     const availableH = Math.max((isFullscreen ? screenHeight : baseHeight) - verticalPadding, 340);
@@ -301,7 +302,9 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     } else {
       const spreadWidth = availableW;
       const basePageWidth = Math.min(spreadWidth / 2, availableH / PAGE_RATIO);
-      const scaledPageWidth = Math.min(basePageWidth * 1.2, spreadWidth / 2);
+      // Scale down more in modal mode (0.9 instead of 1.2)
+      const scaleFactor = isModal ? 0.9 : 1.2;
+      const scaledPageWidth = Math.min(basePageWidth * scaleFactor, spreadWidth / 2);
       const pageHeight = scaledPageWidth * PAGE_RATIO;
       setDimensions({ width: scaledPageWidth, height: pageHeight });
     }
