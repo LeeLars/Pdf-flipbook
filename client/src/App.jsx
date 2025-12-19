@@ -1,10 +1,8 @@
 import { Routes, Route, useParams } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import MagazineViewer from './components/MagazineViewer';
 
 function App() {
-  const rootRef = useRef(null);
-
   // Detect if embedded in iframe and add class to html
   useEffect(() => {
     if (window.self !== window.top) {
@@ -12,46 +10,14 @@ function App() {
     }
   }, []);
 
-  // Send height to parent window when embedded
-  useEffect(() => {
-    const sendHeight = () => {
-      if (window.self !== window.top && rootRef.current) {
-        // Gebruik offsetHeight voor meer nauwkeurige meting inclusief padding/margins
-        const height = rootRef.current.offsetHeight;
-        // Voeg extra buffer toe voor mogelijke CSS animaties of padding
-        const bufferedHeight = height + 50;
-        window.parent.postMessage({ type: 'iframeHeight', height: bufferedHeight }, '*');
-      }
-    };
-
-    // Send height initially
-    const timer = setTimeout(sendHeight, 100); // Wacht even voor initial render
-
-    const resizeObserver = new ResizeObserver(() => {
-      // Debounce de height updates
-      setTimeout(sendHeight, 100);
-    });
-
-    if (rootRef.current) {
-      resizeObserver.observe(rootRef.current);
-    }
-
-    return () => {
-      clearTimeout(timer);
-      resizeObserver.disconnect();
-    };
-  }, []);
-
   return (
-    <div ref={rootRef}>
-      <Routes>
-        {/* Main embed route - clientSlug determines which magazines to show */}
-        <Route path="/:clientSlug" element={<MagazineViewerWrapper />} />
-
-        {/* Fallback for root - show demo or instructions */}
-        <Route path="/" element={<DefaultView />} />
-      </Routes>
-    </div>
+    <Routes>
+      {/* Main embed route - clientSlug determines which magazines to show */}
+      <Route path="/:clientSlug" element={<MagazineViewerWrapper />} />
+      
+      {/* Fallback for root - show demo or instructions */}
+      <Route path="/" element={<DefaultView />} />
+    </Routes>
   );
 }
 
