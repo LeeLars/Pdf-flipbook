@@ -86,8 +86,12 @@ const migrate = async () => {
     console.log('🎉 Database migratie voltooid!');
   } catch (error) {
     console.error('❌ Migratie fout:', error);
-    throw error;
+    console.error('Stack:', error.stack);
+    process.exit(1);
   }
 };
 
-await migrate();
+migrate().catch(err => {
+  console.error('Fatal migration error:', err);
+  process.exit(1);
+});

@@ -55,8 +55,12 @@ const seed = async () => {
     console.log('🎉 Database seeding voltooid!');
   } catch (error) {
     console.error('❌ Seeding fout:', error);
-    throw error;
+    console.error('Stack:', error.stack);
+    process.exit(1);
   }
 };
 
-await seed();
+seed().catch(err => {
+  console.error('Fatal seeding error:', err);
+  process.exit(1);
+});
