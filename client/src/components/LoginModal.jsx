@@ -27,7 +27,7 @@ export default function LoginModal({ isOpen, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop bg-black/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop bg-black/50">
       <div 
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 animate-slide-up"
         onClick={(e) => e.stopPropagation()}

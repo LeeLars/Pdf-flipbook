@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback, forwardRef, useMemo, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef, useMemo } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
   Maximize2, 
   Minimize2, 
+  Download, 
   Volume2, 
   VolumeX,
   ZoomIn,
@@ -14,47 +15,53 @@ import {
 import HTMLFlipBook from 'react-pageflip';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Set up the worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// Reduce PDF.js memory usage in production
+if (typeof window !== 'undefined') {
+  // Limit cache size to prevent memory issues
+  pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 15; // 15MB limit
+}
+
+// Scoped warning suppression for PDF.js only
+const suppressPdfWarnings = (message = '') => (
+  message.includes('TT: invalid function id') ||
+  message.includes('GlobalImageCache.setData - cache limit reached') ||
+  message.includes('No cmap table available') ||
+  message.includes('Knockout groups not supported') ||
+  message.includes('loadFont - translateFont failed')
+);
+
 // PDF.js configuration for proper font rendering
 const PDF_OPTIONS = {
   cMapUrl: 'https://unpkg.com/pdfjs-dist@4.0.379/cmaps/',
   cMapPacked: true,
-  disableRange: true,
+  disableRange: true, // Disable range requests for better CORS
   disableStream: false,
   disableAutoFetch: false,
 };
 
-const PAGE_RATIO = 1.414;
-
-// Debounce helper
-const debounce = (fn, ms) => {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
-};
+const PAGE_RATIO = 1.414; // A4 height/width ratio
 
 // --- Components ---
 
-// Thumbnail Component - memoized to prevent re-renders
-const Thumbnail = memo(({ pageNum, pdf, onClick, isSelected }) => {
+// Thumbnail Component
+const Thumbnail = ({ pageNum, pdf, onClick, isSelected }) => {
   const canvasRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!pdf || !canvasRef.current || loaded) return;
 
-    let cancelled = false;
     const renderThumb = async () => {
       try {
         const page = await pdf.getPage(pageNum);
-        if (cancelled) return;
-        
         const canvas = canvasRef.current;
-        if (!canvas) return;
-        
         const context = canvas.getContext('2d');
-        const viewport = page.getViewport({ scale: 0.2 });
+        
+        // Small scale for thumbnails
+        const viewport = page.getViewport({ scale: 0.3 });
         
         canvas.width = viewport.width;
         canvas.height = viewport.height;
@@ -64,24 +71,21 @@ const Thumbnail = memo(({ pageNum, pdf, onClick, isSelected }) => {
           viewport
         }).promise;
 
-        if (!cancelled) setLoaded(true);
+        setLoaded(true);
       } catch (err) {
-        if (err.name !== 'RenderingCancelledException') {
-          console.error('Thumbnail error:', err);
-        }
+        console.error('Error rendering thumbnail:', err);
       }
     };
 
     renderThumb();
-    return () => { cancelled = true; };
   }, [pdf, pageNum, loaded]);
 
   return (
     <div 
       onClick={() => onClick(pageNum - 1)}
-      className={`cursor-pointer group flex flex-col items-center gap-2 p-2 rounded-lg ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'}`}
+      className={`cursor-pointer group flex flex-col items-center gap-2 p-2 rounded-lg transition-all ${isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'hover:bg-gray-50'}`}
     >
-      <div className="relative shadow-md group-hover:shadow-lg bg-white">
+      <div className="relative shadow-md group-hover:shadow-lg transition-shadow bg-white">
         <canvas ref={canvasRef} className="block max-w-full h-auto" />
       </div>
       <span className={`text-sm font-medium ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>
@@ -89,25 +93,25 @@ const Thumbnail = memo(({ pageNum, pdf, onClick, isSelected }) => {
       </span>
     </div>
   );
-});
+};
 
-// Page Component - memoized, only re-renders when pdf or pageNum changes
-const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
+// Page Component (High Res) - with render task cancellation to prevent canvas conflicts
+const Page = forwardRef(({ pageNum, pdf, width, height, isCover = false }, ref) => {
   const canvasRef = useRef(null);
   const renderTaskRef = useRef(null);
-  const renderedRef = useRef(false);
   const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
-    // Skip if already rendered this page
-    if (renderedRef.current) return;
 
     let cancelled = false;
 
     const renderPage = async () => {
+      // Cancel any ongoing render
       if (renderTaskRef.current) {
-        try { renderTaskRef.current.cancel(); } catch (e) {}
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {}
       }
 
       try {
@@ -118,17 +122,22 @@ const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, 
         if (!canvas) return;
 
         const context = canvas.getContext('2d');
+
         const viewport = page.getViewport({ scale: 1 });
         
-        // 1.5x quality - balance between sharpness and performance
-        const scale = Math.min(width / viewport.width, height / viewport.height) * 1.5;
-        const scaledViewport = page.getViewport({ scale });
+        // 2x quality for sharpness on retina
+        const scaleX = width / viewport.width;
+        const scaleY = height / viewport.height;
+        const qualityScale = Math.min(scaleX, scaleY) * 2;
+        
+        const scaledViewport = page.getViewport({ scale: qualityScale });
 
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
 
+        // White background
         context.fillStyle = 'white';
         context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -141,25 +150,27 @@ const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, 
         await renderTask.promise;
         
         if (!cancelled) {
-          renderedRef.current = true;
           setRendered(true);
         }
       } catch (err) {
         if (err.name !== 'RenderingCancelledException') {
-          console.error('Page render error:', err);
+          console.error('Error rendering page:', err);
         }
       }
     };
 
+    setRendered(false);
     renderPage();
 
     return () => {
       cancelled = true;
       if (renderTaskRef.current) {
-        try { renderTaskRef.current.cancel(); } catch (e) {}
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {}
       }
     };
-  }, [pdf, pageNum]); // Remove width/height dependency to prevent re-renders
+  }, [pdf, pageNum, width, height]);
 
   return (
     <div
@@ -168,7 +179,7 @@ const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, 
       data-density={isCover ? 'hard' : 'soft'}
       style={{ backgroundColor: 'white', width, height, overflow: 'hidden' }}
     >
-      <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.15s' }} />
+      <canvas ref={canvasRef} style={{ opacity: rendered ? 1 : 0, transition: 'opacity 0.2s' }} />
       {!rendered && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
@@ -176,7 +187,7 @@ const Page = memo(forwardRef(({ pageNum, pdf, width, height, isCover = false }, 
       )}
     </div>
   );
-}));
+});
 
 Page.displayName = 'Page';
 
@@ -203,11 +214,6 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   const containerRef = useRef(null);
   const audioRef = useRef({ audioContext: null, buffers: [] });
 
-  // Check if we're on cover pages (single page display)
-  const isLastPage = currentPage >= totalPages - 1;
-  const isCoverPage = currentPage === 0 || (isLastPage && totalPages > 1);
-
-  // Stage dimensions - always full spread width for the flipbook
   const stageDimensions = useMemo(() => {
     const width = isMobile ? dimensions.width : dimensions.width * 2;
     return {
@@ -216,36 +222,31 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     };
   }, [dimensions.width, dimensions.height, isMobile]);
 
-  // Wrapper style - centers the flipbook properly
-  const wrapperStyle = useMemo(() => {
-    return {
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      width: '100%'
-    };
-  }, []);
+  const stageTransform = useMemo(() => {
+    if (isMobile) return 'translateX(0px)';
+    if (currentPage === 0) {
+      return `translateX(-${dimensions.width / 2}px)`;
+    }
+    return 'translateX(0px)';
+  }, [isMobile, currentPage, dimensions.width]);
 
   const stageStyle = useMemo(() => ({
     width: `${stageDimensions.width}px`,
+    maxWidth: '100%',
     height: `${stageDimensions.height}px`,
-    transform: `scale(${zoom})`,
+    transform: `${stageTransform} scale(${zoom})`,
     transformOrigin: 'center center',
     transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
-  }), [stageDimensions, zoom]);
+  }), [stageDimensions, stageTransform, zoom]);
 
-  // Observe container size with debounce to prevent excessive updates
+  // Observe container size for smoother responsive scaling
   useEffect(() => {
     if (!containerRef.current || typeof ResizeObserver === 'undefined') return;
-    
-    const debouncedUpdate = debounce((width, height) => {
-      setContainerSize({ width, height });
-    }, 150);
-    
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        debouncedUpdate(entry.contentRect.width, entry.contentRect.height);
+        const { width, height } = entry.contentRect;
+        setContainerSize({ width, height });
       }
     });
     observer.observe(containerRef.current);
@@ -308,9 +309,8 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   useEffect(() => {
     updateDimensions();
-    const debouncedResize = debounce(updateDimensions, 100);
-    window.addEventListener('resize', debouncedResize);
-    return () => window.removeEventListener('resize', debouncedResize);
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
   }, [updateDimensions]);
 
   // --- PDF Loading ---
@@ -385,39 +385,51 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
   return (
     <div 
       ref={containerRef}
-      className="flipbook-container"
-      style={{
-        position: 'relative',
-        display: 'block',
-        width: '100%',
-        height: isFullscreen ? '100vh' : (isModal ? '90vh' : '825px'),
-        background: '#515558'
-      }}
+      className={`relative flex flex-col items-center bg-gray-100 transition-all duration-300 w-full ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 h-screen w-screen justify-center'
+          : isModal
+            ? 'rounded-2xl min-h-[500px] justify-center py-6'
+            : 'rounded-xl min-h-[620px] justify-center py-10'
+      }`}
     >
-      <div className="flipbook-main-wrapper" style={{ background: '#515558' }}>
-        {/* Top Menu Bar */}
-        <div className="flipbook-menuTop flipbook-menu-fixed" style={{ background: 'none', margin: 0, padding: 0 }}>
-          <div className="flipbook-menu flipbook-menu-left">
-            <div className="flipbook-currentPageHolder" style={{ margin: 0, height: '18px', padding: '10px', color: '#fff', background: 'rgba(0,0,0,0.333)' }}>
-              <span className="flipbook-currentPageNumber">{currentPage + 1} / {totalPages}</span>
-            </div>
-          </div>
-          <div className="flipbook-menu flipbook-menu-center"></div>
-          <div className="flipbook-menu flipbook-menu-right">
-            {showThumbnails && (
-              <button onClick={() => setShowThumbnails(false)} className="flipbook-menu-btn" style={{ color: '#fff' }}>
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-        </div>
+      {/* Top Controls (Title & Close Grid) */}
+      <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-20 pointer-events-none">
+         <div className="pointer-events-auto">
+            {/* Reserved for logo or branding */}
+         </div>
+         {/* Close Grid Button */}
+         {showThumbnails && (
+           <button 
+             onClick={() => setShowThumbnails(false)}
+             className="pointer-events-auto bg-white/90 backdrop-blur shadow-lg p-2 rounded-full hover:bg-white transition-transform hover:scale-110"
+           >
+             <X className="w-6 h-6 text-gray-700" />
+           </button>
+         )}
+      </div>
 
-        {/* Book Layer */}
-        <div className="flipbook-bookLayer" style={{ bottom: '48px', top: 0, left: 0, right: 0, position: 'absolute' }}>
-          <div className={`book flipbook-book-webgl ${showThumbnails ? 'opacity-0 pointer-events-none' : 'opacity-100'}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-            <div style={wrapperStyle}>
-              <div className="flipbook-stage" style={stageStyle}>
-                <HTMLFlipBook
+      {/* Main Content Area */}
+      <div className={`relative transition-transform duration-300 ease-out flex items-center justify-center ${showThumbnails ? 'opacity-0 pointer-events-none scale-95' : 'opacity-100 scale-100'}`}
+           style={{ transform: `scale(${zoom})`, transformOrigin: 'center center', width: '100%' }}
+      >
+        {/* Left Arrow */}
+        {!isMobile && (
+          <button
+            onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
+            className="absolute -left-16 lg:-left-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            disabled={currentPage === 0}
+          >
+            <ChevronLeft className="w-6 h-6 text-gray-700" />
+          </button>
+        )}
+
+        {/* The Book */}
+        <div
+          className="flipbook-stage"
+          style={stageStyle}
+        >
+          <HTMLFlipBook
             ref={flipBookRef}
             width={dimensions.width}
             height={dimensions.height}
@@ -453,64 +465,24 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
                 pdf={pdf}
                 width={dimensions.width}
                 height={dimensions.height}
+                zoomLevel={zoom}
                 isCover={i === 0 || i === totalPages - 1}
               />
             ))}
-                </HTMLFlipBook>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Arrows */}
-          {!isMobile && (
-            <div className="flipbook-nav">
-              <button
-                onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
-                disabled={currentPage >= totalPages - 1}
-                className="flipbook-icon flipbook-right-arrow"
-                style={{
-                  height: '40px',
-                  width: '40px',
-                  marginTop: '-20px',
-                  marginRight: '4px',
-                  borderRadius: '4px',
-                  padding: '10px',
-                  filter: 'drop-shadow(0 0 1px rgb(0,0,0))',
-                  color: '#fff',
-                  fill: '#fff',
-                  background: 'rgba(0,0,0,0)',
-                  border: 'none',
-                  cursor: currentPage >= totalPages - 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage >= totalPages - 1 ? 0.3 : 1
-                }}
-              >
-                <ChevronRight className="w-full h-full" />
-              </button>
-              <button
-                onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
-                disabled={currentPage === 0}
-                className="flipbook-icon flipbook-left-arrow"
-                style={{
-                  height: '40px',
-                  width: '40px',
-                  marginTop: '-20px',
-                  marginLeft: '4px',
-                  borderRadius: '4px',
-                  padding: '10px',
-                  filter: 'drop-shadow(0 0 1px rgb(0,0,0))',
-                  color: '#fff',
-                  fill: '#fff',
-                  background: 'rgba(0,0,0,0)',
-                  border: 'none',
-                  cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage === 0 ? 0.3 : 1
-                }}
-              >
-                <ChevronLeft className="w-full h-full" />
-              </button>
-            </div>
-          )}
+          </HTMLFlipBook>
         </div>
+
+        {/* Right Arrow */}
+        {!isMobile && (
+          <button
+            onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
+            className="absolute -right-16 lg:-right-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            disabled={currentPage >= totalPages - 1}
+          >
+            <ChevronRight className="w-6 h-6 text-gray-700" />
+          </button>
+        )}
+      </div>
 
       {/* Thumbnails Overlay */}
       <div 
@@ -536,55 +508,64 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
         </div>
       </div>
 
-        {/* Bottom Menu Bar */}
-        <div className="flipbook-menuBottom flipbook-menu-fixed" style={{ margin: 0, padding: 0, background: 'rgba(0,0,0,0.8)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <div className="flipbook-menu flipbook-menu-left"></div>
-          <div className="flipbook-menu flipbook-menu-center" style={{ display: 'flex', gap: '0', alignItems: 'center' }}>
-            <button 
-              onClick={() => handleZoom(-0.2)} 
-              disabled={zoom <= 1}
-              className="flipbook-menu-btn"
-              style={{ margin: 0, padding: '14px', color: '#fff', opacity: zoom <= 1 ? 0.3 : 1 }}
-              title="Zoom out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => handleZoom(0.2)} 
-              disabled={zoom >= 3}
-              className="flipbook-menu-btn"
-              style={{ margin: 0, padding: '14px', color: '#fff', opacity: zoom >= 3 ? 0.3 : 1 }}
-              title="Zoom in"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => setShowThumbnails(!showThumbnails)}
-              className="flipbook-menu-btn"
-              style={{ margin: 0, padding: '14px', color: showThumbnails ? '#3b82f6' : '#fff' }}
-              title="Pages"
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className="flipbook-menu-btn"
-              style={{ margin: 0, padding: '14px', color: '#fff' }}
-              title={soundEnabled ? "Geluid uit" : "Geluid aan"}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-            <button 
-              onClick={toggleFullscreen}
-              className="flipbook-menu-btn"
-              style={{ margin: 0, padding: '14px', color: '#fff' }}
-              title="Toggle fullscreen"
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="flipbook-menu flipbook-menu-right"></div>
+      {/* Bottom Floating Toolbar */}
+      <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-3 bg-white/90 backdrop-blur-md shadow-xl rounded-full border border-white/50 z-50 transition-transform duration-300 ${showThumbnails ? 'translate-y-24' : ''}`}>
+        
+        {/* Page Navigation */}
+        <div className="flex items-center gap-1 border-r border-gray-200 pr-3">
+           <button onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700">
+             <ChevronLeft className="w-5 h-5" />
+           </button>
+           <span className="text-sm font-medium text-gray-700 min-w-[60px] text-center tabular-nums">
+             {currentPage + 1} / {totalPages}
+           </span>
+           <button onClick={() => flipBookRef.current?.pageFlip()?.flipNext()} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700">
+             <ChevronRight className="w-5 h-5" />
+           </button>
         </div>
+
+        {/* Zoom Controls */}
+        <div className="hidden md:flex items-center gap-1 border-r border-gray-200 pr-3">
+          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 1} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+            <ZoomOut className="w-5 h-5" />
+          </button>
+          <span className="text-sm font-medium text-gray-700 min-w-[40px] text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 3} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+            <ZoomIn className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tools */}
+        <div className="flex items-center gap-2 pl-1">
+          <button 
+            onClick={() => setShowThumbnails(!showThumbnails)} 
+            className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${showThumbnails ? 'bg-blue-100 text-blue-600' : 'text-gray-700'}`}
+            title="Overzicht"
+          >
+            <Grid className="w-5 h-5" />
+          </button>
+
+          <button 
+            onClick={() => setSoundEnabled(!soundEnabled)} 
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-700"
+            title={soundEnabled ? "Geluid uit" : "Geluid aan"}
+          >
+            {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          </button>
+
+          <div className="w-px h-4 bg-gray-300 mx-1" />
+
+          <button 
+            onClick={toggleFullscreen}
+            className="p-2 rounded-full hover:bg-gray-100 text-gray-700"
+            title="Volledig scherm"
+          >
+            {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+        </div>
+
       </div>
     </div>
   );

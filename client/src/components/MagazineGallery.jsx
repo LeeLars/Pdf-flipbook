@@ -1,9 +1,19 @@
-import { useState, useMemo, useEffect, memo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Filter } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Set up the worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+// Reduce PDF.js memory usage in production
+if (typeof window !== 'undefined') {
+  // Limit cache size to prevent memory issues
+  pdfjsLib.GlobalWorkerOptions.maxCanvasPixels = 1024 * 1024 * 10; // 10MB limit
+}
+
 // Simple in-memory cache per session so we don't re-render the same PDF covers repeatedly
 const coverCache = new Map();
+const MAX_CACHE_SIZE = 20; // Limit cache size
 
 export default function MagazineGallery({ magazines, onMagazineClick }) {
   const [selectedYear, setSelectedYear] = useState('all');
@@ -83,7 +93,7 @@ export default function MagazineGallery({ magazines, onMagazineClick }) {
   );
 }
 
-const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
+function MagazineCard({ magazine, onClick }) {
   const [coverUrl, setCoverUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -92,22 +102,29 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
     let cancelled = false;
 
     const loadCover = async () => {
-      // Generate from PDF if available
+      console.log('🔍 Loading cover for:', magazine.title, 'cover_url:', magazine.cover_url, 'pdf_url:', magazine.pdf_url);
+
+      // TEMP: Always generate from PDF first to debug
       if (magazine.pdf_url) {
+        console.log('📄 Generating cover from PDF (forced)');
         generateFromPdf();
         return;
       }
 
       // Fallback: try cover_url if no PDF
       if (magazine.cover_url) {
+        console.log('📸 Testing cover_url (fallback):', magazine.cover_url);
+        // Test if the image loads
         const img = new Image();
         img.onload = () => {
+          console.log('✅ Cover URL loaded successfully:', magazine.cover_url);
           if (!cancelled) {
             setCoverUrl(magazine.cover_url);
             setLoading(false);
           }
         };
         img.onerror = () => {
+          console.log('❌ Cover URL failed:', magazine.cover_url);
           if (!cancelled) {
             setError(true);
             setLoading(false);
@@ -117,6 +134,7 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
         return;
       }
 
+      console.log('❌ No cover_url or pdf_url available');
       setError(true);
       setLoading(false);
     };
@@ -181,6 +199,7 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
         canvas.height = 1;
         context.clearRect(0, 0, 1, 1);
       } catch (err) {
+        console.error('Cover generation failed:', magazine.title);
         if (!cancelled) {
           setError(true);
           setLoading(false);
@@ -196,7 +215,7 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-lg text-left w-full group"
+      className="magazine-card bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl text-left w-full group transition-all duration-300 hover:-translate-y-1"
     >
       {/* Cover */}
       <div className="bg-gray-50 relative overflow-hidden">
@@ -210,8 +229,7 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
           <img
             src={coverUrl}
             alt={magazine.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         )}
 
@@ -223,14 +241,20 @@ const MagazineCard = memo(function MagazineCard({ magazine, onClick }) {
           </div>
         )}
         
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <span className="bg-white/90 backdrop-blur px-4 py-2 rounded-full text-sm font-medium text-gray-800 shadow-sm">
+            Lezen
+          </span>
+        </div>
       </div>
 
       {/* Title */}
       <div className="p-3 border-t border-gray-50">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center">
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 text-center group-hover:text-blue-600 transition-colors">
           {magazine.title}
         </h3>
       </div>
     </button>
   );
-});
+}

@@ -1,4 +1,4 @@
-import pool, { query } from './index.js';
+import { query } from './index.js';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 
@@ -54,11 +54,9 @@ const seed = async () => {
 
     console.log('🎉 Database seeding voltooid!');
   } catch (error) {
-    console.error('❌ Seeding fout:', error.message);
-    process.exit(1);
-  } finally {
-    await pool.end();
+    console.error('❌ Seeding fout:', error);
+    throw error;
   }
 };
 
-seed();
+await seed();
