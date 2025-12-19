@@ -25,11 +25,31 @@ html.embedded, html.embedded body, html.embedded #root {
   overflow: visible !important;
 }
 
-/* Flipbook styles */
+/* Flipbook Container */
 .flipbook-container {
-  perspective: 2000px;
+  position: relative;
+  display: block;
+  width: 100%;
 }
 
+.flipbook-main-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Book Layer */
+.flipbook-bookLayer {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.book.flipbook-book-webgl {
+  position: relative;
+  transition: opacity 0.3s;
+}
 
 .flipbook-stage {
   position: relative;
@@ -39,7 +59,6 @@ html.embedded, html.embedded body, html.embedded #root {
   will-change: transform;
 }
 
-/* Ensure the flipbook wrapper centers properly */
 .stf__parent {
   margin: 0 auto !important;
   transform-style: preserve-3d;
@@ -50,22 +69,105 @@ html.embedded, html.embedded body, html.embedded #root {
   transform-style: preserve-3d;
 }
 
-/* Book block */
 .stf__block {
   will-change: transform;
 }
 
 .flipbook {
   width: 100%;
-  max-width: 900px;
   margin: 0 auto;
 }
 
-/* Page styling */
 .flipbook-page,
 .stf__item {
   background: white;
   will-change: transform;
+}
+
+/* Navigation Arrows */
+.flipbook-nav {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.flipbook-icon {
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.flipbook-icon:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+/* Menu Bars */
+.flipbook-menu-fixed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 200;
+}
+
+.flipbook-menuTop {
+  top: 0;
+}
+
+.flipbook-menuBottom {
+  bottom: 0;
+  height: 48px;
+}
+
+.flipbook-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flipbook-menu-left {
+  justify-content: flex-start;
+}
+
+.flipbook-menu-center {
+  justify-content: center;
+  flex: 1;
+}
+
+.flipbook-menu-right {
+  justify-content: flex-end;
+}
+
+.flipbook-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flipbook-menu-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.flipbook-menu-btn:disabled {
+  cursor: not-allowed;
+}
+
+.flipbook-currentPageHolder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
 }
 
 /* PDF Canvas */
