@@ -30,17 +30,19 @@ html.embedded, html.embedded body, html.embedded #root {
   perspective: 2000px;
 }
 
-
 .flipbook-stage {
   position: relative;
   background: transparent;
   filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.25)) drop-shadow(0 12px 24px rgba(0, 0, 0, 0.15));
+  will-change: transform;
 }
 
 .flipbook {
   width: 100%;
   max-width: 900px;
   margin: 0 auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 /* Page styling with realistic paper shadow */
@@ -50,11 +52,33 @@ html.embedded, html.embedded body, html.embedded #root {
   box-shadow: 
     inset 0 0 30px rgba(0, 0, 0, 0.02),
     0 0 5px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.3s ease;
+  will-change: transform, opacity;
 }
 
 /* Enhance the fold/curl shadow during flip */
 .stf__block {
   filter: drop-shadow(2px 4px 8px rgba(0, 0, 0, 0.15));
+  transition: filter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth page flipping animation */
+.stf__parent {
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Page wrapper animations */
+.stf__wrapper {
+  transform-style: preserve-3d;
+  perspective: 2000px;
+}
+
+/* Improved shadow transitions during page turn */
+.stf__outerShadow,
+.stf__innerShadow,
+.stf__hardShadow,
+.stf__hardInnerShadow {
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* PDF Canvas */

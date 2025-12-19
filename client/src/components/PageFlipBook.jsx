@@ -236,7 +236,11 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
     height: `${stageDimensions.height}px`,
     transform: `${stageTransform} scale(${zoom})`,
     transformOrigin: 'center center',
-    transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)'
+    transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    perspective: 2000
   }), [stageDimensions, stageTransform, zoom]);
 
   // Observe container size for smoother responsive scaling
@@ -348,7 +352,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
   const handleZoom = (delta) => {
     setZoom(prev => {
-      const newZoom = Math.max(1, Math.min(prev + delta, 3));
+      const newZoom = Math.max(0.8, Math.min(prev + delta, 2.5));
       return newZoom;
     });
   };
@@ -451,15 +455,17 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
             style={{ width: stageDimensions.width, height: stageDimensions.height, margin: 0, padding: 0 }}
             startPage={0}
             drawShadow={true}
-            flippingTime={700}
+            flippingTime={600}
             usePortrait={isMobile}
             startZIndex={0}
             autoSize={false}
-            maxShadowOpacity={1}
+            maxShadowOpacity={0.8}
             showPageCorners={true}
             disableFlipByClick={false}
             clickEventForward={true}
             swipeDistance={30}
+            useMouseEvents={true}
+            renderOnlyPageLengthChange={false}
           >
             {Array.from({ length: totalPages }, (_, i) => (
               <Page
@@ -529,13 +535,13 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
 
         {/* Zoom Controls */}
         <div className="hidden md:flex items-center gap-1 border-r border-gray-200 pr-3">
-          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 1} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+          <button onClick={() => handleZoom(-0.2)} disabled={zoom <= 0.8} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30 transition-opacity">
             <ZoomOut className="w-5 h-5" />
           </button>
           <span className="text-sm font-medium text-gray-700 min-w-[40px] text-center">
             {Math.round(zoom * 100)}%
           </span>
-          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 3} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30">
+          <button onClick={() => handleZoom(0.2)} disabled={zoom >= 2.5} className="p-1.5 rounded-full hover:bg-gray-100 text-gray-700 disabled:opacity-30 transition-opacity">
             <ZoomIn className="w-5 h-5" />
           </button>
         </div>
