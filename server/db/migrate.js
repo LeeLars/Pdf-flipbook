@@ -1,4 +1,4 @@
-import { query } from './index.js';
+import pool, { query } from './index.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -85,9 +85,11 @@ const migrate = async () => {
 
     console.log('🎉 Database migratie voltooid!');
   } catch (error) {
-    console.error('❌ Migratie fout:', error);
-    throw error;
+    console.error('❌ Migratie fout:', error.message);
+    process.exit(1);
+  } finally {
+    await pool.end();
   }
 };
 
-await migrate();
+migrate();
