@@ -17,12 +17,15 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
   background: transparent;
   overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
 }
 
 /* When embedded in iframe */
 html.embedded, html.embedded body, html.embedded #root {
   background: transparent !important;
   overflow: visible !important;
+  scrollbar-gutter: stable;
 }
 
 /* Flipbook styles */

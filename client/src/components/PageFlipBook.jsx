@@ -387,7 +387,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
       ref={containerRef}
       className={`relative flex flex-col items-center bg-gray-100 transition-all duration-300 w-full ${
         isFullscreen
-          ? 'fixed inset-0 z-50 h-screen w-screen justify-center'
+          ? 'fixed inset-0 z-50 h-screen w-full justify-center'
           : isModal
             ? 'rounded-2xl min-h-[500px] justify-center py-6'
             : 'rounded-xl min-h-[620px] justify-center py-10'
