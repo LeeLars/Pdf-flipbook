@@ -389,7 +389,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
         isFullscreen
           ? 'fixed inset-0 z-50 h-screen w-full justify-center'
           : isModal
-            ? 'rounded-2xl min-h-[500px] justify-center py-6'
+            ? 'rounded-2xl h-full min-h-0 justify-center py-4'
             : 'rounded-xl min-h-[620px] justify-center py-10'
       }`}
     >
@@ -417,7 +417,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipPrev()}
-            className="absolute -left-16 lg:-left-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            className={`absolute ${isModal ? 'left-3 sm:left-6' : '-left-16 lg:-left-24'} p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0`}
             disabled={currentPage === 0}
           >
             <ChevronLeft className="w-6 h-6 text-gray-700" />
@@ -476,7 +476,7 @@ export default function PageFlipBook({ pdfUrl, title, variant = 'default' }) {
         {!isMobile && (
           <button
             onClick={() => flipBookRef.current?.pageFlip()?.flipNext()}
-            className="absolute -right-16 lg:-right-24 p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0"
+            className={`absolute ${isModal ? 'right-3 sm:right-6' : '-right-16 lg:-right-24'} p-3 rounded-full bg-white/80 shadow-lg hover:bg-white transition-all hover:scale-110 z-10 disabled:opacity-0`}
             disabled={currentPage >= totalPages - 1}
           >
             <ChevronRight className="w-6 h-6 text-gray-700" />
